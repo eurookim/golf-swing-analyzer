@@ -14,37 +14,52 @@ rules, and design rationale.
 
 **Phase 0 — not started.** Nothing built yet.
 
+**v1 angle: down-the-line only.** Face-on deferred to v2.
+
 | Phase | Deliverable | Status |
 |-------|-------------|--------|
-| **0** | Record 5–10 swings, run MediaPipe, dump annotated video. **GO / NO-GO.** | ☐ |
+| **0** | Run MediaPipe on existing 60fps DTL clips, dump annotated video. **GO / NO-GO.** | ☐ |
 | **1** | `ingest` + `pose` + smoothing + persisted keypoints (CLI only) | ☐ |
 | **2** | Event detection (P1/P4/P7/P10) + hand-labeled ground-truth set | ☐ |
-| **3** | Metrics with body-scale normalization | ☐ |
-| **4** | Fault rules + `thresholds.yaml` + tuning | ☐ |
+| **3** | DTL metrics with shoulder-width normalization | ☐ |
+| **4** | Fault rules + per-club `thresholds.yaml` + tuning | ☐ |
 | **5** | Streamlit UI, SQLite history, trend charts | ☐ |
+| **6** | *Optional.* Shaft-line detection → swing plane. Decide after Phase 3. | ☐ |
 
 ---
 
 ## The three constraints that shape everything
 
-1. **Record in Slo-Mo (120 or 240fps).** A downswing is ~0.25s — at 30fps that's
-   7 frames, which is unusable.
+1. **Frame rate decides which metrics are trustworthy.** A downswing is ~0.25s —
+   7 frames at 30fps (unusable), ~15 at 60fps (workable), ~60 at 240fps (ideal).
+   60fps holds up here because most faults are measured at address and top of
+   backswing, the slow moments. Only impact-anchored metrics degrade. **fps is
+   always read from `ffprobe`, never assumed.**
 2. **The club is invisible.** MediaPipe gives 33 *body* joints and nothing about
-   the club. Body-driven metrics are cheap; club path / face angle are out of
-   scope for v1.
+   the club. Body-driven metrics are cheap; swing plane and club path need a
+   separate detector — optional Phase 6.
 3. **Camera angle changes the meaning of every metric.** Face-on and
    down-the-line support different metrics. Every video is tagged with its angle
-   at ingest.
+   at ingest, and only angle-valid metrics are computed.
+
+**Why DTL first:** footage already exists so Phase 0 starts now; it's the harder
+pose problem (arms cross the torso, trail leg hides behind lead leg), making it a
+stronger GO/NO-GO gate; and early extension — a very common amateur fault — is
+invisible face-on.
 
 ---
 
 ## Capture setup
 
-- **Slo-Mo mode, 120 or 240fps**, bright light (motion blur wrecks pose accuracy)
-- **Tripod at a fixed height** — consistency beats correctness
-- **Face-on**: perpendicular to target line, belt height, ~10–12 ft away
-- **Down-the-line**: on the target line behind you, hand height, ~10–12 ft
+- **Down-the-line**: camera *on the target line* behind you (extend the
+  ball-to-target line backward through yourself), hand height, ~10–12 ft.
+  Placing it behind your *body* rather than the *line* skews every angle.
+- **Slo-Mo (120/240fps) when possible**; 60fps works for v1. Bright light matters
+  more than frame rate — motion blur wrecks pose accuracy.
+- **Tripod at a fixed height** — consistency beats correctness. Mark the spot.
 - **Fitted clothing** contrasting with the background
+- **One club (7-iron)** for the first session
+- Filenames: `2026-07-28_dtl_7iron.mov`
 
 ---
 

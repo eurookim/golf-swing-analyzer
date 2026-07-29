@@ -3,20 +3,59 @@
 **Scope decided:** personal tool, runs locally on the laptop, analyzes swings recorded earlier at the range.
 Output = named swing faults + numeric metrics. No club tracking, no cloud, no accounts, no mobile app.
 
+**v1 angle: down-the-line (DTL) only.** Face-on is deferred to v2. Rationale below.
+
 ---
 
 ## The three constraints that shape everything
 
-1. **Frame rate.** Downswing (top → impact) is ~0.25s. At 30fps that's 7 frames — unusable.
-   Record in **iPhone Slo-Mo (120 or 240fps)**. This is non-negotiable and affects file sizes downstream.
+1. **Frame rate.** The downswing (top → impact) is ~0.25s, so frame rate decides which metrics are trustworthy:
+
+   | fps | Frames in downswing | Verdict |
+   |-----|--------------------:|---------|
+   | 30 | ~7 | Unusable |
+   | **60** | **~15** | **Usable — P1/P4-anchored metrics are solid; impact-anchored ones degrade** |
+   | 120 | ~30 | Good |
+   | 240 | ~60 | Ideal |
+
+   What saves 60fps is that most faults here are measured at **address and top of backswing — the slow
+   moments.** Only impact-dependent metrics suffer: impact falls *between* frames (±8ms, hands travel ~7cm),
+   so tempo ratio is ±7% (catches "way too quick," won't track fine changes) and early extension is
+   directional rather than precise.
+
+   **Never hardcode fps.** Read it from `ffprobe`, store per swing, compute everything in *seconds*. Then
+   higher-fps footage later just sharpens the same metrics with zero code changes.
+
+   Also: **60fps in bright sun beats 240fps in a dim garage.** Motion blur hurts pose accuracy more than
+   frame count does — high frame rates in low light force either a fast shutter (dark, noisy) or a slow one
+   (smeared hands).
 
 2. **The club is invisible.** MediaPipe gives 33 *body* joints and nothing about the club. Metrics driven by
    body joints (turn, tilt, sway, tempo, extension) are cheap. Club path / face angle / swing plane require a
-   custom-trained detector — explicitly out of scope for v1.
+   separate detector — out of scope for v1, revisited as optional Phase 6.
 
 3. **Camera angle changes the meaning of every metric.** Face-on and down-the-line (DTL) support *different*
    metrics. Every video must be tagged with its angle at ingest, and only angle-valid metrics computed.
    Baking this in from day one; retrofitting it later is painful.
+
+---
+
+## Why DTL first
+
+**v1 computes DTL metrics only.** Face-on is deferred to v2. Reasons, in order:
+
+- **Footage already exists.** Phase 0 can run today instead of after a range trip.
+- **DTL is the harder pose problem** — from behind, the arms cross the torso and the trail leg hides behind
+  the lead leg. Far more self-occlusion than face-on. If MediaPipe survives DTL, face-on is easy. That makes
+  it a *stronger* GO/NO-GO gate.
+- **Early extension is only visible from DTL**, and it's one of the most common amateur faults. Face-on
+  cannot see it at all.
+- **Loss of posture works cleanly at 60fps** — it's a P1-vs-P4 comparison, both slow moments.
+
+The honest tradeoff: DTL yields **fewer** body-only metrics than face-on, because most of what DTL is famous
+for — swing plane, club path, shaft angle — needs the club. Body-only DTL at 60fps gives roughly two solid
+faults (loss of posture, head lift) plus early extension directionally. That is thin, but enough to build and
+validate the entire pipeline against, and it sharpens considerably at 240fps.
 
 ---
 
@@ -43,7 +82,7 @@ something complicated.
 ## Pipeline
 
 ```
-video.mp4 (120/240fps)
+video.mp4 (60fps now, 120/240fps later — fps read from ffprobe, never assumed)
   │
   ├─ ingest.py   ffprobe for TRUE capture fps + rotation metadata; downscale to 720p; tag camera angle
   ├─ pose.py     MediaPipe Pose Landmarker, VIDEO mode, heavy model → (n_frames, 33, 4) array
@@ -71,17 +110,29 @@ video.mp4 (120/240fps)
 
 Key landmarks: 11/12 shoulders, 23/24 hips, 25/26 knees, 27/28 ankles, 15/16 wrists, 0 nose.
 
-| Metric | Angle | How |
-|--------|-------|-----|
-| Spine tilt | DTL | mid-hip→mid-shoulder vector vs vertical, at P1 / P4 / P7 |
-| Shoulder turn | Face-on | `arccos(current_shoulder_width / address_shoulder_width)` — foreshortening trick |
-| Hip turn | Face-on | same trick on the hip line |
-| X-factor | Face-on | shoulder turn − hip turn at P4 (good players ~40–50°) |
-| Head drift | Both | nose displacement from P1, normalized by shoulder width |
-| Weight shift | Face-on | mid-hip horizontal position over time, normalized by shoulder width |
-| Tempo ratio | Both | `(P4−P1) / (P7−P4)` in frames. Tour average ≈ 3:1 |
-| Knee flex | Both | knee angle at P1 vs P7 |
-| Hip depth | DTL | hip horizontal distance from the original address butt-line |
+### v1 — DTL metrics (build these)
+
+| Metric | How | At 60fps |
+|--------|-----|----------|
+| Spine tilt | mid-hip→mid-shoulder vector vs vertical, at P1 / P4 / P7 | ✅ at P1, P4 |
+| Posture change | spine tilt at P4 minus spine tilt at P1 | ✅ |
+| Hip depth | hip horizontal distance from the address butt-line (a vertical line at the hips at P1) | ⚠️ needs P7 |
+| Head height | nose vertical position vs P1, normalized by shoulder width | ✅ P1→P4 |
+| Head depth | nose horizontal drift toward/away from the ball | ⚠️ partial |
+| Knee flex | knee angle at P1 vs P7 | ⚠️ needs P7 |
+| Tempo ratio | `(P4−P1) / (P7−P4)` in **seconds**. Tour average ≈ 3:1 | ⚠️ ±7% |
+
+In DTL the camera looks along the target line, so **image-horizontal is the ball-to-golfer axis** — hip
+movement toward the ball is horizontal movement in frame. That's what makes early extension measurable.
+
+### v2 — face-on metrics (deferred, do not build yet)
+
+| Metric | How |
+|--------|-----|
+| Shoulder turn | `arccos(current_shoulder_width / address_shoulder_width)` — foreshortening trick |
+| Hip turn | same trick on the hip line |
+| X-factor | shoulder turn − hip turn at P4 (good players ~40–50°) |
+| Weight shift | mid-hip horizontal position over time, normalized by shoulder width |
 
 **Normalization is mandatory, and the reference must be club-invariant.** Divide every pixel distance by
 **shoulder width** (or hip→shoulder distance). Otherwise standing 2 feet closer to the camera silently changes
@@ -121,18 +172,27 @@ fault — the app would confidently tell you to fix something you're doing right
 
 Each fault = a pure function over metrics → `(fired, measured_value, threshold, severity)`.
 
-| Fault | Angle | Rough rule |
-|-------|-------|------------|
-| Loss of posture | DTL | spine tilt at P4 differs from P1 by > 8° |
-| Early extension | DTL | hips move ballward > 4% of body-scale between P4 and P7 |
-| Sway | Face-on | mid-hip drifts away from target > 6% of shoulder width at P4 |
-| Slide | Face-on | excessive lateral hip drift toward target at P7 |
-| Reverse pivot | Face-on | head/weight moves *toward* target during backswing |
-| Head lift | Both | nose rises beyond threshold P1→P7 |
-| Quick tempo | Both | tempo ratio < 2.2 |
-| Restricted turn | Face-on | shoulder turn at P4 < 80° |
+### v1 — DTL faults (build these)
 
-Thresholds live in `thresholds.yaml`, never in code — tuning these is the main activity for weeks 3–4.
+| Fault | Rough rule | Confidence at 60fps |
+|-------|------------|---------------------|
+| Loss of posture | spine tilt at P4 differs from P1 by > 8° | **Solid** |
+| Head lift | nose rises > 3% of shoulder width, P1→P4 | **Solid** |
+| Early extension | hips move ballward > 4% of shoulder width between P4 and P7 | Directional |
+| Excessive knee straightening | trail knee angle at P7 exceeds P1 by > 15° | Directional |
+| Quick tempo | tempo ratio < 2.2 | Rough |
+
+### v2 — face-on faults (deferred)
+
+| Fault | Rough rule |
+|-------|------------|
+| Sway | mid-hip drifts away from target > 6% of shoulder width at P4 |
+| Slide | excessive lateral hip drift toward target at P7 |
+| Reverse pivot | head/weight moves *toward* target during backswing |
+| Restricted turn | shoulder turn at P4 < 80° |
+
+Thresholds live in `thresholds.yaml`, never in code, with **per-club sections** — tuning these is the main
+activity for weeks 3–4.
 
 **These numbers are invented until calibrated.** They are starting points, not truth.
 
@@ -143,7 +203,7 @@ Thresholds live in `thresholds.yaml`, never in code — tuning these is the main
 **`data/raw/` is precious. Everything else is disposable.**
 
 ```
-data/raw/2026-07-28_faceon_7iron.mov     original — never modified, never auto-deleted
+data/raw/2026-07-28_dtl_7iron.mov         original — never modified, never auto-deleted
       ├──▶ data/processed/swing_014.npz   keypoints, ~2 MB, regenerable
       ├──▶ outputs/swing_014_annotated.mp4 skeleton overlay, regenerable
       └──▶ swings.db                       metrics + faults + the PATH above
@@ -187,12 +247,68 @@ Single user, local, "make it real" effort — so the weeks go into *analysis qua
 
 | Phase | Time | Deliverable |
 |-------|------|-------------|
-| **0** | 2–3 hrs | Record 5–10 swings. ffprobe them. Run MediaPipe. Dump annotated video. **GO / NO-GO on the whole idea.** |
+| **0** | 2–3 hrs | **Use existing 60fps DTL footage.** ffprobe it. Run MediaPipe. Dump annotated video + per-frame visibility scores. **GO / NO-GO on the whole idea.** |
 | **1** | Week 1 | ingest + pose + smoothing + persisted keypoints. CLI only. |
 | **2** | Week 1–2 | Event detection + a frame-scrubber to hand-label ground truth. Highest risk. |
-| **3** | Week 2 | Metrics with normalization. |
-| **4** | Week 3 | Fault rules + YAML thresholds + tuning. |
+| **3** | Week 2 | DTL metrics with shoulder-width normalization. |
+| **4** | Week 3 | Fault rules + per-club YAML thresholds + tuning. |
 | **5** | Week 3–4 | Streamlit UI, SQLite history, trend charts. |
+| **6** | +1–3 wks | *Optional.* Shaft-line detection → swing plane. Decide **after** Phase 3. |
+
+---
+
+## Phase 6 (optional): shaft-line detection
+
+**Not committed to.** Revisit after Phase 3, when event detection works and you've seen how the shaft actually
+looks against your range's background.
+
+### Why it's gated behind Phase 3
+
+Club tracking is useless without event detection. "Shaft angle at the top of the backswing" requires knowing
+*which frame* is the top — every plane metric is anchored to P1/P2/P4/P7. The body pipeline isn't a detour
+you'd skip by going straight to the club; it's the prerequisite.
+
+### Approach: detect the shaft, not the clubhead
+
+```
+grayscale → Canny edge detect → Hough line transform
+   → keep only lines passing within ~20px of the wrist midpoint
+   → enforce frame-to-frame angular continuity
+   → shaft angle per frame
+```
+
+**The wrist constraint is the whole trick.** A naive Hough transform on driving-range footage returns dozens
+of straight lines — fence posts, mat edges, net cables, dividers, alignment sticks, the horizon. But wrist
+position is already known from MediaPipe, and the shaft *must* emanate from the hands. Filtering to lines
+passing near the wrist midpoint eliminates nearly every false positive. This is what makes the difference
+between an unusable detector and a working one.
+
+**Deliberately not the clubhead.** A trained detector (YOLO-class) would need 500–2,000 hand-labeled frames —
+10–20 hours of labeling before training anything — and a clubhead at 100mph is a smeared streak even at
+240fps, smallest and fastest exactly where you most want it. GolfDB has event labels but *no* clubhead boxes,
+so it would all be self-labeled. That path is 1–3 months with real risk of never working well. Shaft-line
+detection needs **zero training data**.
+
+### What it buys
+
+Shaft angle at address defines the plane line. Extend it and show where the shaft sits relative to it:
+
+| Frame | Reveals |
+|-------|---------|
+| P1 address | Baseline shaft plane |
+| P2 takeaway | On plane, inside, or outside |
+| P4 top | Across the line vs laid off |
+| Early downswing | **Over the top** vs shallowing |
+
+That's the line instructors draw on video — the most recognizable diagnostic in golf, and the reason DTL
+exists as an angle.
+
+### Known failure modes
+
+- **Motion blur through impact** — the shaft smears. Expect this to work at address, takeaway, halfway back,
+  top, and early downswing; not at P7. At 60fps, blur starts earlier in the downswing.
+- **Cluttered backgrounds** — range fences and dividers are straight lines. Mitigated by the wrist constraint.
+- **Low contrast** — a dark shaft against dark background or dark clothing may be undetectable.
 
 ---
 
@@ -209,14 +325,18 @@ abandoned in week 3.
 
 ## Capture setup (do this before writing any code)
 
-- **Slo-Mo mode, 120 or 240fps.** Bright light — motion blur destroys pose accuracy.
+- **Down-the-line (v1 angle):** camera sits *on the target line* behind you — extend the ball-to-target line
+  backward through you and put the camera on it. **Hand height, ~10–12 ft away.** The common mistake is
+  placing it behind your *body* instead of on the *line*, which skews every angle you measure.
+- **Slo-Mo mode, 120 or 240fps** when possible. 60fps is workable for v1 (see constraint 1). Bright light
+  matters more than frame rate — motion blur destroys pose accuracy.
 - **Tripod, fixed height.** Camera height changes measured angles, so *consistency beats correctness*.
-  Same spot, same height, every session.
-- **Face-on**: perpendicular to target line, hand/belt height, ~10–12 ft away.
-- **Down-the-line**: on the target line behind you, hand height, ~10–12 ft.
-- **Fitted clothing**, contrasting with the background. Baggy clothes badly degrade pose estimation.
-- Record both angles of the same swing where possible; label filenames with angle + club.
+  Same spot, same height, every session. Mark it.
+- **Fitted clothing**, contrasting with the background. Baggy clothes badly degrade pose estimation, and DTL
+  is already the more occluded angle.
 - **Same club throughout** (7-iron) for the first session — fewer variables.
+- Label filenames with angle + club: `2026-07-28_dtl_7iron.mov`.
+- *Face-on (v2, later):* perpendicular to target line, hand/belt height, ~10–12 ft away.
 
 ### Film deliberate faults, not just your normal swing
 
