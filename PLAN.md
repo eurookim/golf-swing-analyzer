@@ -32,7 +32,7 @@ Output = named swing faults + numeric metrics. No club tracking, no cloud, no ac
 
 2. **The club is invisible.** MediaPipe gives 33 *body* joints and nothing about the club. Metrics driven by
    body joints (turn, tilt, sway, tempo, extension) are cheap. Club path / face angle / swing plane require a
-   separate detector — out of scope for v1, revisited as optional Phase 6.
+   separate detector — out of scope for v1, revisited as optional Phase 7.
 
 3. **Camera angle changes the meaning of every metric.** Face-on and down-the-line (DTL) support *different*
    metrics. Every video must be tagged with its angle at ingest, and only angle-valid metrics computed.
@@ -275,11 +275,71 @@ Single user, local, "make it real" effort — so the weeks go into *analysis qua
 | **3** | Week 2 | DTL metrics with shoulder-width normalization. |
 | **4** | Week 3 | Fault rules + per-club YAML thresholds + tuning. |
 | **5** | Week 3–4 | Streamlit UI, SQLite history, trend charts. |
-| **6** | +1–3 wks | *Optional.* Shaft-line detection → swing plane. Decide **after** Phase 3. |
+| **6** | +3–5 days | Swing segmentation — split a continuous range video into individual swings. |
+| **7** | +1–3 wks | *Optional.* Shaft-line detection → swing plane. Decide **after** Phase 3. |
 
 ---
 
-## Phase 6 (optional): shaft-line detection
+## Phase 6: swing segmentation
+
+**The whole pipeline currently assumes one clip = one swing.** That holds for
+stop-start filming and breaks the moment a session is recorded continuously — which
+is what actually happens when a phone sits on a tripod for twenty minutes.
+
+Until this exists, the workaround is stop-start recording (a tap before and after
+each swing). That is genuinely fine for the calibration session and is the
+recommended approach there — separate files make the deliberate-fault labels
+trivial, whereas locating swing #9 inside a 20-minute file does not. Don't build
+tooling to avoid 30 taps. Build it when continuous sessions become the normal way
+you record.
+
+### Detection signal
+
+A range session has an unmistakable shape: long still stretches (walking, setting
+up, waiting) punctuated by ~1.5s bursts of violent motion. That contrast is far
+larger than the differences between P1/P4/P7 *within* a swing, which makes
+segmentation the easier problem despite sounding harder.
+
+Look for the **still → burst → still** pattern in a motion-energy series, then
+window out each burst with padding for address and finish.
+
+### Architecture: cheap first, expensive second
+
+```
+20-min video ──▶ frame differencing (cheap)  ──▶ candidate windows
+                                                      │
+                                            pose model (expensive)
+                                                      │
+                                                 N swings
+```
+
+**Run cheap motion detection over everything; run the pose model only on windows
+that contain a swing.** The arithmetic decides it: 20 minutes at 60fps is 72,000
+frames, roughly an hour under the heavy pose model. Frame differencing over the
+same footage is well under a minute, after which only ~40 swings × 3s × 60fps ≈
+7,000 frames need posing — about 6 minutes. **~10× less compute**, and the
+difference between "run it while I make coffee" and "leave it overnight."
+
+### Known failure modes
+
+- **Practice swings and waggles** will trigger it — they look like swings because
+  they are swings.
+- **Other people walking through frame** at a busy range.
+- **Ball retrieval** between shots, if it's animated enough.
+
+Mitigations: require a minimum motion magnitude, require the full still→burst→still
+shape rather than any spike, and confirm a person is actually detected in the
+window. None are hard; together they're a few days of tuning, not an afternoon.
+
+### Why it is sequenced here
+
+Segmentation is worthless until single-swing analysis is solid — it produces more
+swings to feed a pipeline that must already work. It depends on nothing but Phases
+1–4, so it can slot in any time after those, independent of the UI.
+
+---
+
+## Phase 7 (optional): shaft-line detection
 
 **Not committed to.** Revisit after Phase 3, when event detection works and you've seen how the shaft actually
 looks against your range's background.
@@ -357,6 +417,10 @@ abandoned in week 3.
 - **Fitted clothing**, contrasting with the background. Baggy clothes badly degrade pose estimation, and DTL
   is already the more occluded angle.
 - **Same club throughout** (7-iron) for the first session — fewer variables.
+- **Stop-start recording, one clip per swing** until Phase 6 (segmentation) exists.
+  A tap before and after each swing. This also makes the deliberate-fault labels
+  trivial — separate files carry the tag in the name. Note 20 minutes of continuous
+  1080p60 HEVC is ~2 GB, which is awkward to AirDrop; short clips sidestep that too.
 
 ---
 

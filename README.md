@@ -24,7 +24,8 @@ rules, and design rationale.
 | **3** | DTL metrics with shoulder-width normalization | ☐ |
 | **4** | Fault rules + per-club `thresholds.yaml` + tuning | ☐ |
 | **5** | Streamlit UI, SQLite history, trend charts | ☐ |
-| **6** | *Optional.* Shaft-line detection → swing plane. Decide after Phase 3. | ☐ |
+| **6** | Swing segmentation — split a continuous range video into individual swings | ☐ |
+| **7** | *Optional.* Shaft-line detection → swing plane. Decide after Phase 3. | ☐ |
 
 ---
 
@@ -59,7 +60,10 @@ invisible face-on.
 - **Tripod at a fixed height** — consistency beats correctness. Mark the spot.
 - **Fitted clothing** contrasting with the background
 - **One club (7-iron)** for the first session
-- Filenames: `2026-07-28_dtl_7iron.mov`
+- **Stop-start recording, one clip per swing** until Phase 6 lands — the pipeline
+  currently assumes one clip = one swing, and separate files make the
+  deliberate-fault labels trivial
+- Filenames: `2026-07-28_dtl_7iron_01.mov`
 
 ---
 
