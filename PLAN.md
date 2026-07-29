@@ -335,7 +335,48 @@ abandoned in week 3.
 - **Fitted clothing**, contrasting with the background. Baggy clothes badly degrade pose estimation, and DTL
   is already the more occluded angle.
 - **Same club throughout** (7-iron) for the first session — fewer variables.
-- Label filenames with angle + club: `2026-07-28_dtl_7iron.mov`.
+
+---
+
+## Filename convention
+
+```
+YYYY-MM-DD_<angle>_<club>_<nn>[_<fault>].mov
+```
+
+| Part | Purpose |
+|------|---------|
+| `2026-07-28` | ISO date **first** so files sort chronologically as plain text. `07-28-2026` sorts wrong forever. |
+| `dtl` / `fo` | Angle decides which metrics are valid. Face-on metrics must never be computed on a DTL clip. |
+| `7iron` | Selects the per-club threshold set. |
+| `01` | Sequence within the session, **zero-padded**. Computers sort text, not numbers — unpadded gives `1, 10, 11, 2`. Resets each session; it is not a global ID. |
+| `_earlyext` | **Optional, deliberate-fault clips only.** |
+
+A session:
+
+```
+2026-07-28_dtl_7iron_01.mov            normal
+2026-07-28_dtl_7iron_08.mov            normal
+2026-07-28_dtl_7iron_09_posture.mov    deliberate fault
+2026-07-28_dtl_7iron_10_earlyext.mov   deliberate fault
+```
+
+**The fault tag is the ground-truth label, not a note.** In Phase 4 threshold tuning
+asks "does the early-extension rule fire on the clips where I deliberately stood up?"
+The filename encodes the expected output. No tag means "no fault expected."
+
+Tags match the v1 fault names: `_posture`, `_earlyext`, `_headlift`, `_quicktempo`.
+
+**Rules:**
+
+- **Lowercase, no spaces** — spaces force quoting on every shell command forever.
+- **No redundant words** — everything in `data/raw/` is already a golf swing of yours.
+- **Name once at export, never rename.** The DB stores the file path; renaming after
+  ingest orphans that swing's history.
+
+**The filename is a convenience for seeding the DB at ingest, not the source of truth.**
+Once ingested, the database owns date, angle, club, and tag. Don't encode ball flight,
+conditions, or notes — those are fields, not filename segments.
 - *Face-on (v2, later):* perpendicular to target line, hand/belt height, ~10–12 ft away.
 
 ### Film deliberate faults, not just your normal swing
