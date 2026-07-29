@@ -25,6 +25,9 @@ data/processed/
 *.npz
 *.npy
 *.parquet
+
+# MediaPipe model weights (~30 MB, auto-downloaded by phase0_check.py)
+models/
 *.sqlite
 *.sqlite3
 *.db
