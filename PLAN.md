@@ -65,18 +65,36 @@ Golf has a standard position framework. We need four frames:
 
 | Event | Name | Detection signal |
 |-------|------|------------------|
-| P1 | Address | Last sustained low-motion plateau before motion energy crosses threshold |
-| P4 | Top of backswing | **Shoulder-line rotation reaches maximum and reverses** |
-| P7 | Impact | Shoulder/hip angular velocity peak; hips return through address orientation |
-| P10 | Finish | Motion energy returns to near-zero after P7 |
+| P1 | Address | End of the flat wrist-height plateau before the backswing rise |
+| P4 | Top of backswing | **First wrist-height local maximum, before the speed spike** |
+| P7 | Impact | **Torso-speed global maximum** (corroborated by the shoulder/hip width dip) |
+| P10 | Finish | Motion energy settles after P7 |
 
-> **Do not detect events from wrist velocity.** Phase 0 on real DTL footage measured
-> wrist/arm visibility at 0.62–0.74 mean with **30–42% of frames below 0.5**, while
-> shoulders and hips sat at **1.00 with 0% bad frames**. Wrists are the noisiest
-> signal available; shoulders and hips are the cleanest. Since the top of the
-> backswing is equally well defined by shoulder rotation reversing, key every event
-> off the torso, not the hands. This is measured on this project's own footage, not a
-> general claim about MediaPipe.
+> **Signals were chosen by plotting them, not by reasoning from visibility scores.**
+> Measured on all three clips (see the exploration in Phase 2): smoothed wrist height
+> gives a textbook plateau → peak → trough → peak shape in every swing, and torso
+> speed gives a single unambiguous spike at impact. Wrist-peak to speed-spike measures
+> 0.29 / 0.25 / 0.32s across the three clips — matching the real-world ~0.25s
+> downswing, which confirms the signal tracks the actual event.
+>
+> **This reverses the earlier Phase 0 decision to key events off the torso.** That
+> decision came from wrist visibility measuring 0.62–0.74 with 30–42% of frames below
+> 0.5, and it conflated two different things: **visibility is an occlusion-confidence
+> flag, not positional error.** MediaPipe still places an occluded wrist roughly
+> correctly; after smoothing the trajectory is the cleanest signal available.
+>
+> The signals promoted in that decision measured worse:
+> - **Shoulder line angle is unusable** — ±180° atan2 wraparound produces a step
+>   function, not a curve. Would need unwrapping and still isn't smooth.
+> - **Shoulder and hip width never reverse** — they climb monotonically to the finish,
+>   so there is no peak marking the top of the backswing.
+>
+> Both *do* dip sharply at impact (the torso squares to the target line and
+> foreshortens from DTL), so they remain useful as an independent P7 cross-check.
+>
+> **P4 is the FIRST wrist-height peak, not the global maximum.** On two of three clips
+> the follow-through peak is higher than the backswing peak. Search before the speed
+> spike.
 
 **Every metric is measured at, or between, these frames.** Get this right and the rest is arithmetic.
 This is also the highest-risk component — budget the most time here.
