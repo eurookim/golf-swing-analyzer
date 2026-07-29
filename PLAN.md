@@ -238,6 +238,65 @@ activity for weeks 3–4.
 
 ---
 
+## Design principles — what makes the output useful
+
+Measuring is the easy part once pose tracking works. **The hard part is making
+measurements mean something.** These are ranked by how much they change the
+golfer's actual behaviour.
+
+### 1. Prioritise, never enumerate
+
+Detecting six faults and displaying six faults helps nobody — an amateur can only
+work on one thing at a time, and picking the wrong one wastes a month. **Show one
+fault**, collapse the rest behind "also detected."
+
+Nearly free here: fault rules already return a severity, so ranking is a sort.
+Build it into Phase 4 rather than bolting it on later.
+
+Better still, faults have causal structure — early extension is often *caused* by a
+setup problem, so flagging "stop standing up" treats the symptom.
+
+### 2. Consistency, not just correctness
+
+Variance is a bigger enemy than any single bad position. *"Your spine angle varies
+±8° swing to swing"* is more actionable than any one measurement, and it is exactly
+what a coach watching ten swings notices that single-swing analysis structurally
+cannot see. Requires many swings per session — **this is a second, independent
+reason for Phase 6 segmentation.**
+
+### 3. Change over time
+
+The entire justification for the database. Also why club and camera angle are
+tagged: mixed-condition history is noise, not a trend.
+
+### 4. Connect faults to ball flight
+
+Golfers care where the ball goes, not their spine angle. Mapping body faults to
+likely miss patterns is the translation layer that makes a metric feel relevant
+rather than academic. Phase 5+, once faults are trustworthy.
+
+### 5. Honest uncertainty
+
+Say "couldn't measure this reliably" rather than reporting a number. Almost no tool
+does this, and it is why people stop trusting them after one obviously wrong
+reading. The mechanism already exists — visibility scores and the NaN convention.
+
+### 6. Compare against your own best swing
+
+Not against a tour pro. Time-synced at the P-positions, good day vs bad day.
+Achievable and motivating; the tour comparison is neither.
+
+### Deliberately not built
+
+| Anti-feature | Why |
+|---|---|
+| A score out of 100 | Feels satisfying, teaches nothing, invites gaming |
+| Comparison to tour pros | You will not swing like Rory; the gap demotivates rather than instructs |
+| Every metric on one screen | Analysis paralysis — more numbers is not more insight |
+| Precision theater | Reporting 34.7° when the measurement is ±3° is a lie with decimal places |
+
+---
+
 ## Data & storage
 
 **`data/raw/` is precious. Everything else is disposable.**
