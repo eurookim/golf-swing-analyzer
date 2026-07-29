@@ -18,12 +18,17 @@ module:
 
 from __future__ import annotations
 
+from dataclasses import dataclass, fields
+
 import numpy as np
 
+from golfswing.events import SwingEvents
 from golfswing.sequence import PoseSequence
 
 LEFT_SHOULDER, RIGHT_SHOULDER = 11, 12
 LEFT_HIP, RIGHT_HIP = 23, 24
+LEFT_KNEE, RIGHT_KNEE = 25, 26
+LEFT_ANKLE, RIGHT_ANKLE = 27, 28
 NOSE = 0
 
 
@@ -145,3 +150,101 @@ def posture_change(sequence: PoseSequence, p1: int, p4: int) -> float:
     different faults, and collapsing to a magnitude here would hide which.
     """
     return spine_tilt(sequence, p4) - spine_tilt(sequence, p1)
+
+
+def _joint_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
+    """Interior angle at b, in degrees. 180 means a-b-c are collinear."""
+    if not all(np.all(np.isfinite(p)) for p in (a, b, c)):
+        return float("nan")
+    ba, bc = a - b, c - b
+    na, nc = np.linalg.norm(ba), np.linalg.norm(bc)
+    if na == 0 or nc == 0:
+        return float("nan")
+    cosine = float(np.clip(np.dot(ba, bc) / (na * nc), -1.0, 1.0))
+    return float(np.degrees(np.arccos(cosine)))
+
+
+def knee_angle(sequence: PoseSequence, frame: int) -> float:
+    """Mean interior knee angle across both legs, in degrees (180 = straight).
+
+    Averaged rather than picking a side: from down-the-line one leg occludes
+    the other, and which one is visible depends on handedness and camera side.
+    Straightening shows up in the mean either way.
+    """
+    lm = sequence.landmarks
+    angles = [
+        _joint_angle(lm[frame, hip, :2], lm[frame, knee, :2], lm[frame, ankle, :2])
+        for hip, knee, ankle in (
+            (LEFT_HIP, LEFT_KNEE, LEFT_ANKLE),
+            (RIGHT_HIP, RIGHT_KNEE, RIGHT_ANKLE),
+        )
+    ]
+    finite = [a for a in angles if np.isfinite(a)]
+    return float(np.mean(finite)) if finite else float("nan")
+
+
+def knee_extension_change(sequence: PoseSequence, p1: int, p7: int) -> float:
+    """Knee angle at impact minus at address. Positive means straightening."""
+    return knee_angle(sequence, p7) - knee_angle(sequence, p1)
+
+
+def head_depth_change(sequence: PoseSequence, p1: int, other: int) -> float:
+    """Head movement toward the ball, as a fraction of torso length."""
+    direction = ball_direction(sequence, p1)
+    scale = body_scale(sequence, p1)
+    x_address = sequence.landmarks[p1, NOSE, 0]
+    x_other = sequence.landmarks[other, NOSE, 0]
+    if not np.isfinite(direction) or not np.isfinite(scale) or scale == 0:
+        return float("nan")
+    if not (np.isfinite(x_address) and np.isfinite(x_other)):
+        return float("nan")
+    return float((x_other - x_address) * direction / scale)
+
+
+@dataclass(frozen=True)
+class SwingMetrics:
+    """Every v1 DTL measurement for one swing.
+
+    Lengths are fractions of torso length; angles are degrees. Any value may be
+    NaN when the landmarks it needs were not tracked — reported rather than
+    guessed, so a partly-tracked swing still yields the metrics that resolved.
+    """
+
+    events: SwingEvents
+
+    spine_tilt_p1: float
+    spine_tilt_p4: float
+    spine_tilt_p7: float
+    posture_change: float
+    hip_depth_change: float
+    head_rise_p4: float
+    head_rise_p7: float
+    head_depth_p7: float
+    knee_extension_change: float
+    tempo_ratio: float
+
+    def as_dict(self) -> dict[str, float]:
+        """Flat float mapping, for storage and display. Excludes the events."""
+        return {
+            f.name: float(getattr(self, f.name))
+            for f in fields(self)
+            if f.name != "events"
+        }
+
+
+def compute(sequence: PoseSequence, events: SwingEvents) -> SwingMetrics:
+    """Compute every v1 metric for one swing in a single pass."""
+    p1, p4, p7 = events.p1, events.p4, events.p7
+    return SwingMetrics(
+        events=events,
+        spine_tilt_p1=spine_tilt(sequence, p1),
+        spine_tilt_p4=spine_tilt(sequence, p4),
+        spine_tilt_p7=spine_tilt(sequence, p7),
+        posture_change=posture_change(sequence, p1, p4),
+        hip_depth_change=hip_depth_change(sequence, p1, p7),
+        head_rise_p4=head_rise(sequence, p1, p4),
+        head_rise_p7=head_rise(sequence, p1, p7),
+        head_depth_p7=head_depth_change(sequence, p1, p7),
+        knee_extension_change=knee_extension_change(sequence, p1, p7),
+        tempo_ratio=tempo_ratio(sequence, p1, p4, p7),
+    )

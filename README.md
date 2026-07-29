@@ -27,7 +27,7 @@ with shoulders and hips at 1.00 visibility.
 | **0** | Run MediaPipe on existing 60fps DTL clips, dump annotated video. **GO / NO-GO.** | ✅ |
 | **1** | `ingest` + `pose` + smoothing + persisted keypoints (CLI only) | ✅ |
 | **2** | Event detection (P1/P4/P7/P10) + hand-labeled ground-truth set | ☐ |
-| **3** | DTL metrics with shoulder-width normalization | ☐ |
+| **3** | DTL metrics with torso-length normalization | ✅ |
 | **4** | Fault rules + per-club `thresholds.yaml` + tuning | ☐ |
 | **5** | Streamlit UI, SQLite history, trend charts | ☐ |
 | **6** | Swing segmentation — split a continuous range video into individual swings | ☐ |

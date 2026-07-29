@@ -4,10 +4,13 @@ import numpy as np
 import pytest
 
 from golfswing import metrics
+from golfswing.events import SwingEvents
 from golfswing.sequence import PoseSequence
 
 L_SH, R_SH = 11, 12
 L_HIP, R_HIP = 23, 24
+L_KNEE, R_KNEE = 25, 26
+L_ANKLE, R_ANKLE = 27, 28
 NOSE = 0
 
 
@@ -217,6 +220,108 @@ class TestHeadMovement:
     def test_nan_when_the_nose_is_missing(self):
         lm = np.concatenate([_upright(), _upright()])
         assert np.isnan(metrics.head_rise(_sequence(lm), p1=0, other=1))
+
+
+class TestKneeAngle:
+    """Interior angle at the knee: 180 degrees is a straight leg."""
+
+    def _leg(self, hip_xy, knee_xy, ankle_xy):
+        return _frame({
+            L_HIP: hip_xy, R_HIP: hip_xy,
+            L_KNEE: knee_xy, R_KNEE: knee_xy,
+            L_ANKLE: ankle_xy, R_ANKLE: ankle_xy,
+            L_SH: (0.5, 0.2), R_SH: (0.5, 0.2),
+        })
+
+    def test_straight_leg_is_180_degrees(self):
+        lm = self._leg((0.5, 0.50), (0.5, 0.70), (0.5, 0.90))
+        assert metrics.knee_angle(_sequence(lm), 0) == pytest.approx(180.0, abs=0.01)
+
+    def test_right_angle_is_90_degrees(self):
+        lm = self._leg((0.5, 0.50), (0.5, 0.70), (0.7, 0.70))
+        assert metrics.knee_angle(_sequence(lm), 0) == pytest.approx(90.0, abs=0.01)
+
+    def test_is_scale_invariant(self):
+        small = self._leg((0.5, 0.50), (0.5, 0.60), (0.6, 0.60))
+        large = self._leg((0.5, 0.30), (0.5, 0.70), (0.9, 0.70))
+        assert metrics.knee_angle(_sequence(small), 0) == pytest.approx(
+            metrics.knee_angle(_sequence(large), 0), abs=0.01
+        )
+
+    def test_nan_when_the_leg_is_missing(self):
+        assert np.isnan(metrics.knee_angle(_sequence(_frame()), 0))
+
+
+class TestKneeExtension:
+    def test_positive_when_the_leg_straightens_into_impact(self):
+        bent = _frame({L_HIP: (0.5, 0.5), R_HIP: (0.5, 0.5),
+                       L_KNEE: (0.5, 0.7), R_KNEE: (0.5, 0.7),
+                       L_ANKLE: (0.62, 0.88), R_ANKLE: (0.62, 0.88),
+                       L_SH: (0.5, 0.2), R_SH: (0.5, 0.2)})
+        straight = _frame({L_HIP: (0.5, 0.5), R_HIP: (0.5, 0.5),
+                           L_KNEE: (0.5, 0.7), R_KNEE: (0.5, 0.7),
+                           L_ANKLE: (0.5, 0.9), R_ANKLE: (0.5, 0.9),
+                           L_SH: (0.5, 0.2), R_SH: (0.5, 0.2)})
+        seq = _sequence(np.concatenate([bent, straight]))
+        assert metrics.knee_extension_change(seq, p1=0, p7=1) > 0
+
+
+class TestHeadDepth:
+    """Head drifting toward or away from the ball, along image x."""
+
+    def _with_nose(self, lean, nose_x):
+        lm = _upright(lean=lean)
+        lm[0, NOSE] = (nose_x, 0.20, 0.0, 1.0)
+        return lm
+
+    def test_positive_when_the_head_moves_toward_the_ball(self):
+        lm = np.concatenate([self._with_nose(0.2, 0.50), self._with_nose(0.2, 0.56)])
+        assert metrics.head_depth_change(_sequence(lm), p1=0, other=1) > 0
+
+    def test_sign_is_independent_of_which_way_the_golfer_faces(self):
+        right = np.concatenate([self._with_nose(0.2, 0.50), self._with_nose(0.2, 0.56)])
+        left = np.concatenate([self._with_nose(-0.2, 0.50), self._with_nose(-0.2, 0.44)])
+        assert metrics.head_depth_change(_sequence(right), p1=0, other=1) == pytest.approx(
+            metrics.head_depth_change(_sequence(left), p1=0, other=1)
+        )
+
+
+class TestSwingMetricsRecord:
+    """Everything a fault rule needs, computed in one pass."""
+
+    def _swing(self):
+        frames = [_upright(lean=0.30), _upright(lean=0.24), _upright(lean=0.28)]
+        for f in frames:
+            f[0, NOSE] = (0.5, 0.20, 0.0, 1.0)
+            f[0, L_KNEE] = (0.5, 0.72, 0.0, 1.0)
+            f[0, R_KNEE] = (0.5, 0.72, 0.0, 1.0)
+            f[0, L_ANKLE] = (0.55, 0.90, 0.0, 1.0)
+            f[0, R_ANKLE] = (0.55, 0.90, 0.0, 1.0)
+        return _sequence(np.concatenate(frames), fps=10.0)
+
+    def test_computes_every_v1_metric(self):
+        m = metrics.compute(self._swing(), SwingEvents(p1=0, p4=1, p7=2, p10=2))
+        for field in ("spine_tilt_p1", "spine_tilt_p4", "spine_tilt_p7",
+                      "posture_change", "hip_depth_change", "head_rise_p4",
+                      "head_rise_p7", "head_depth_p7", "knee_extension_change",
+                      "tempo_ratio"):
+            assert hasattr(m, field), f"missing {field}"
+
+    def test_carries_the_events_it_was_computed_at(self):
+        events = SwingEvents(p1=0, p4=1, p7=2, p10=2)
+        assert metrics.compute(self._swing(), events).events == events
+
+    def test_survives_a_sequence_with_missing_landmarks(self):
+        """Must return NaNs, not raise — a partly-tracked swing is still worth
+        reporting on for the metrics that did resolve."""
+        blank = _sequence(np.concatenate([_frame(), _frame(), _frame()]), fps=10.0)
+        m = metrics.compute(blank, SwingEvents(p1=0, p4=1, p7=2, p10=2))
+        assert np.isnan(m.spine_tilt_p1)
+
+    def test_as_dict_is_flat_and_serialisable(self):
+        m = metrics.compute(self._swing(), SwingEvents(p1=0, p4=1, p7=2, p10=2))
+        d = m.as_dict()
+        assert all(isinstance(v, float) for v in d.values())
 
 
 class TestTempo:
