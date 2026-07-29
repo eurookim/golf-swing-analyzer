@@ -265,6 +265,61 @@ Angles (spine tilt, knee flex) need no normalisation at all — they are scale-f
 
 ---
 
+## Setup-consistency check (Phase 4)
+
+**The problem:** every DTL depth metric assumes image-horizontal *is* the
+ball-to-golfer axis. That only holds when the camera sits on the target line. Off
+the line, hip depth and head depth are measuring a skewed axis — and nothing in the
+output would say so.
+
+**The signal — free, no extra work:**
+
+```
+alignment = shoulder_width(P1) / torso_length(P1)
+```
+
+The shoulder line foreshortens *most* when the camera is perfectly on the target
+line, so **lower = better aligned**. Dividing by torso length removes camera
+distance, leaving squareness.
+
+Measured on four clips:
+
+| Clip | alignment | spine tilt @P1 |
+|------|----------:|---------------:|
+| 06-28 5-iron | 0.132 | 34.6° |
+| 07-10 driver | **0.365** | 33.1° |
+| 07-22 driver | **0.075** | 34.0° |
+| 07-25 driver | 0.204 | 41.3° |
+
+**A 4.9× spread across four sessions** — the tripod moved a lot. Suggestive but not
+conclusive: 07-10 has both the worst alignment *and* the outlier head rise (−0.39)
+and tempo (4.48). One clip is not evidence, but it is the expected direction.
+
+**Behaviour:**
+
+1. Compute `alignment` for every swing; store it alongside the metrics.
+2. Baseline = median across the golfer's history (or across the session).
+3. Flag clips deviating beyond a tolerance, and **downgrade confidence on the
+   metrics that actually depend on the axis** — not blanket-flag everything:
+
+| Metric | Affected by camera yaw? |
+|--------|-------------------------|
+| Hip depth, head depth | ✅ **Strongly** — measured along the assumed ball axis |
+| Spine tilt, posture change, knee angle | ⚠️ Moderately — measured in the image plane |
+| Head rise | ➖ Barely — vertical stays vertical under yaw |
+| Tempo | ❌ Not at all — timing only |
+
+4. Surface it as *"camera appears further off the target line than usual; treat
+   depth metrics with caution"* — never as a silent adjustment.
+
+This is design principle 5 (honest uncertainty) applied to **setup** rather than
+tracking, and it is the only defence against the confound that makes four clips from
+four sessions uninterpretable. It also gives immediate feedback at capture time:
+a session whose alignment differs from baseline can be re-shot while you are still
+standing there.
+
+---
+
 ## Club is metadata, never inferred
 
 Tag the club at ingest via filename or dropdown (`2026-07-28_dtl_driver.mov`). Do not try to detect it from
