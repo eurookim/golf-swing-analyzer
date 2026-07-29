@@ -226,6 +226,27 @@ class TestDetectEvents:
         got = events.detect_events(_sequence(_synthetic_swing()))
         assert got.p10 > got.p7
 
+    def test_finish_ignores_a_momentary_dip_in_the_follow_through(self):
+        """Motion must STAY settled, not merely touch the threshold once.
+
+        Regression guard, not a fix: this passed on first write, so it did not
+        drive any change. The real early-finish bias on four verified clips
+        (-7, -1, -6, -3) turned out to be definitional rather than a lull — the
+        detector marks when motion stops, while a human marks the fully-wrapped
+        finish pose, which is still being moved into. See PLAN.md.
+        """
+        p7 = 80
+        lm = _synthetic_swing(n=200, p1=30, p4=60, p7=p7)
+        # Brief lull mid-follow-through, then motion resumes before the real stop.
+        for j in (L_WR, R_WR):
+            lm[p7 + 8:p7 + 12, j, 0] = lm[p7 + 8, j, 0]
+
+        got = events.detect_events(_sequence(lm))
+
+        assert got.p10 > p7 + 14, (
+            f"finish at f{got.p10} latched onto the lull at f{p7 + 8}-{p7 + 12}"
+        )
+
     def test_finish_waits_for_the_whole_body_to_settle(self):
         """The torso stops almost immediately at impact; the arms do not.
 

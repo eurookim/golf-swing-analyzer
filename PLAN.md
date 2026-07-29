@@ -99,6 +99,39 @@ Golf has a standard position framework. We need four frames:
 **Every metric is measured at, or between, these frames.** Get this right and the rest is arithmetic.
 This is also the highest-risk component — budget the most time here.
 
+### Measured accuracy (4 hand-verified clips)
+
+| Event | mean_abs | max | Matters because |
+|-------|---------:|----:|-----------------|
+| P1 | 8.5 | 11 | **Only tempo.** Every other use measures *at* P1, where the golfer is static. |
+| P4 | 2.0 | 4 | Posture change, hip depth |
+| **P7** | **0.8** | **1** | Hip depth, knee flex — the impact-anchored metrics |
+| P10 | 4.2 | 7 | **Nothing.** No v1 metric uses it. |
+
+**Stop tuning P1 and P10.** Both are definitionally ambiguous rather than buggy, and
+neither materially affects the output:
+
+- **P1** — the takeaway begins gradually, so there is no frame where "still" becomes
+  "moving." Two human estimates of the same event came in 5 frames apart, and on one
+  clip a 15-frame window was indistinguishable by eye. Detector errors are scattered
+  both ways (−8, −5, +10, +11), so there is no bias to correct. Crucially, metrics
+  measured *at* P1 are unaffected: the golfer is static, so any frame in that window
+  is equivalent. Only the **duration** P1→P4 suffers — i.e. tempo.
+- **P10** — errors are consistently early (−7, −1, −6, −3), which looks like a
+  fixable bias but is a definition mismatch: the detector marks *when motion stops*,
+  a human marks *the fully-wrapped finish pose*. On one clip the human label sits on
+  a local **peak** of motion, not on stillness. Since no v1 metric consumes P10, this
+  is not worth resolving.
+
+**Tempo is the one output degraded by all of this**, and it compounds: on a verified
+clip, event errors of 3–6 frames produced a 43% tempo error, because it is a ratio of
+two differences whose errors push the same way. Report it with a confidence band or
+not at all.
+
+P7 was validated on a **held-out clip** that influenced no tuning decision: error 0
+frames, alongside P4 error 0. That is real evidence the shoulder-width signal
+generalises rather than fitting the clips it was selected on.
+
 Fallback if heuristics prove fragile: the **GolfDB** dataset (McNally et al., 2019) — ~1400 labeled swing
 videos with 8 event frames each, plus a baseline model (SwingNet). Worth knowing it exists before hand-rolling
 something complicated.
