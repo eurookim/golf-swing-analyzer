@@ -59,13 +59,26 @@ def _synthetic_swing(n=140, p1=30, p4=60, p7=80):
     lm[:, L_WR, 0] += hand_x
     lm[:, R_WR, 0] += hand_x
 
-    # Torso: a velocity burst peaking exactly at p7, decaying fast afterwards —
-    # the torso stops well before the swing does.
-    burst = np.exp(-((np.arange(n) - p7) ** 2) / (2 * 4.0 ** 2))
+    # Shoulder line foreshortens to its narrowest exactly AT impact: from
+    # down-the-line the torso squares to the target line and the shoulder line
+    # points at the camera. Measured on all three real clips as the most
+    # accurate impact cue (mean_abs 1.0 frames).
+    squareness = np.exp(-((np.arange(n) - p7) ** 2) / (2 * 5.0 ** 2))
+    half_width = 0.16 * (1.0 - 0.85 * squareness)
+    lm[:, 11, 0] = 0.5 - half_width
+    lm[:, 12, 0] = 0.5 + half_width
+    lm[:, 11, 1] = 0.35
+    lm[:, 12, 1] = 0.35
+
+    # Torso velocity peaks 3 frames AFTER contact — the body keeps accelerating
+    # through release, which is why torso speed lags true impact on real
+    # footage.
+    burst = np.exp(-((np.arange(n) - (p7 + 3)) ** 2) / (2 * 4.0 ** 2))
     travel = np.cumsum(burst) * 0.01
     for j in TORSO:
-        lm[:, j, 0] = travel
-        lm[:, j, 1] = 0.5
+        lm[:, j, 0] += travel
+        if j in (23, 24):
+            lm[:, j, 1] = 0.55
 
     # Arms keep travelling through the follow-through and only settle at
     # p7 + 30. This is the real behaviour the torso-only finish test missed.
@@ -106,9 +119,15 @@ class TestTorsoSpeed:
     def test_zero_for_a_stationary_body(self):
         assert np.allclose(events.torso_speed(_sequence(_still(40))), 0.0)
 
-    def test_peaks_at_impact(self):
-        seq = _sequence(_synthetic_swing())
-        assert np.argmax(events.torso_speed(seq)) == pytest.approx(80, abs=2)
+    def test_peaks_shortly_AFTER_impact(self):
+        """Documents why torso speed cannot be the impact signal on its own.
+
+        The body keeps accelerating through release, so peak rotation lands a
+        few frames past contact. Useful for locating the swing; too coarse for
+        pinning the moment.
+        """
+        seq = _sequence(_synthetic_swing(p7=80))
+        assert np.argmax(events.torso_speed(seq)) > 80
 
     def test_uses_real_timestamps_not_frame_index(self):
         """Same motion over twice the elapsed time must read as half the speed."""
@@ -125,6 +144,18 @@ class TestDetectEvents:
     def test_finds_impact_at_the_speed_spike(self):
         got = events.detect_events(_sequence(_synthetic_swing(p7=80)))
         assert got.p7 == pytest.approx(80, abs=2)
+
+    def test_impact_is_not_dragged_late_by_torso_acceleration(self):
+        """Peak torso speed occurs AFTER contact — the body is still
+        accelerating through release.
+
+        Measured on three verified clips: shoulder-width minimum scores
+        mean_abs 1.0 frames against torso-speed max at 1.67 (max error 3).
+        Impact must key on the torso squaring to the target line, not on how
+        fast it is rotating.
+        """
+        got = events.detect_events(_sequence(_synthetic_swing(p7=80)))
+        assert got.p7 == pytest.approx(80, abs=1)
 
     def test_finds_top_of_backswing(self):
         got = events.detect_events(_sequence(_synthetic_swing(p4=60)))
@@ -160,6 +191,23 @@ class TestDetectEvents:
             f"(starts {p1}, lift begins {p1 + FLAT_TAKEAWAY}) — detected from "
             f"height rather than motion onset"
         )
+
+    def test_leading_dead_time_does_not_change_the_measured_swing(self):
+        """Standing still before the swing must not inflate the backswing.
+
+        Detection anchors on impact and scans BACKWARD, so extra stillness at
+        the head of a clip is skipped rather than counted. Durations between
+        events must be identical however long the golfer stands there.
+        """
+        base = _synthetic_swing(n=140, p1=30, p4=60, p7=80)
+        dead = np.repeat(base[:1], 120, axis=0)     # 2 extra seconds of address
+        padded = np.concatenate([dead, base], axis=0)
+
+        short = events.detect_events(_sequence(base))
+        long = events.detect_events(_sequence(padded))
+
+        assert long.p4 - long.p1 == pytest.approx(short.p4 - short.p1, abs=2)
+        assert long.p7 - long.p4 == pytest.approx(short.p7 - short.p4, abs=2)
 
     def test_address_ignores_a_waggle(self):
         """A pre-shot waggle is motion, but it is not the takeaway."""
