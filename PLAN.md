@@ -78,14 +78,42 @@ Key landmarks: 11/12 shoulders, 23/24 hips, 25/26 knees, 27/28 ankles, 15/16 wri
 | Hip turn | Face-on | same trick on the hip line |
 | X-factor | Face-on | shoulder turn − hip turn at P4 (good players ~40–50°) |
 | Head drift | Both | nose displacement from P1, normalized by shoulder width |
-| Weight shift | Face-on | mid-hip horizontal position over time, normalized by stance width |
+| Weight shift | Face-on | mid-hip horizontal position over time, normalized by shoulder width |
 | Tempo ratio | Both | `(P4−P1) / (P7−P4)` in frames. Tour average ≈ 3:1 |
 | Knee flex | Both | knee angle at P1 vs P7 |
 | Hip depth | DTL | hip horizontal distance from the original address butt-line |
 
-**Normalization is mandatory.** Divide every pixel distance by a body-scale reference (shoulder width, or
-hip→shoulder distance). Otherwise standing 2 feet closer to the camera silently changes all your numbers and
-session-over-session comparison is meaningless.
+**Normalization is mandatory, and the reference must be club-invariant.** Divide every pixel distance by
+**shoulder width** (or hip→shoulder distance). Otherwise standing 2 feet closer to the camera silently changes
+all your numbers and session-over-session comparison is meaningless.
+
+Do **not** normalize by stance width — stance width changes with club (driver is wider than a 7-iron), so the
+identical physical sway would score differently across clubs and cross-club comparison breaks. Shoulder width
+does not change with club.
+
+---
+
+## Club is metadata, never inferred
+
+Tag the club at ingest via filename or dropdown (`2026-07-28_dtl_driver.mov`). Do not try to detect it from
+pose — MediaPipe can't see the club, and body-pose proxies (stance width, hand height at top) vary more
+between golfers than between clubs.
+
+It matters because iron and driver swings are legitimately different, not better or worse:
+
+| | Iron | Driver |
+|---|---|---|
+| Stance width | Narrower | Wider |
+| Ball position | Center-ish | Forward, off lead heel |
+| Spine tilt away from target at address | Less | ~5–10° more |
+| Attack angle | Descending | Ascending |
+
+That extra driver spine tilt is *correct technique*, but scored against iron thresholds it reads as a posture
+fault — the app would confidently tell you to fix something you're doing right. Consequences:
+
+- `thresholds.yaml` needs **per-club sections**, not one global set
+- **Trend charts must filter by club** — mixed-club history is noise
+- **v1: shoot one club only (7-iron)** until the pipeline works. Add clubs after.
 
 ---
 
@@ -97,7 +125,7 @@ Each fault = a pure function over metrics → `(fired, measured_value, threshold
 |-------|-------|------------|
 | Loss of posture | DTL | spine tilt at P4 differs from P1 by > 8° |
 | Early extension | DTL | hips move ballward > 4% of body-scale between P4 and P7 |
-| Sway | Face-on | mid-hip drifts away from target > 6% of stance width at P4 |
+| Sway | Face-on | mid-hip drifts away from target > 6% of shoulder width at P4 |
 | Slide | Face-on | excessive lateral hip drift toward target at P7 |
 | Reverse pivot | Face-on | head/weight moves *toward* target during backswing |
 | Head lift | Both | nose rises beyond threshold P1→P7 |
