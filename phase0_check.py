@@ -105,12 +105,19 @@ def rotate_frame(frame: np.ndarray, rotation: int) -> np.ndarray:
 
     OpenCV does not reliably honour the rotation matrix in .mov files, which is
     how you end up with a sideways skeleton and every angle silently wrong.
+
+    Sign convention matters and is easy to invert. ffprobe reports the display
+    matrix angle, so the correction is the NEGATIVE of it: an iPhone clip tagged
+    `rotation=-90` must be rotated 90° CLOCKWISE to display upright. Verified
+    against ffmpeg's own output — it applies rotation correctly, so a frame
+    extracted with ffmpeg is ground truth to diff against.
     """
-    if rotation == 90:
+    angle = (-rotation) % 360
+    if angle == 90:
         return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-    if rotation == 180:
+    if angle == 180:
         return cv2.rotate(frame, cv2.ROTATE_180)
-    if rotation == 270:
+    if angle == 270:
         return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
     return frame
 

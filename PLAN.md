@@ -66,9 +66,17 @@ Golf has a standard position framework. We need four frames:
 | Event | Name | Detection signal |
 |-------|------|------------------|
 | P1 | Address | Last sustained low-motion plateau before motion energy crosses threshold |
-| P4 | Top of backswing | Wrist vertical velocity crosses zero + wrist reaches highest point, direction reverses |
-| P7 | Impact | Peak hand speed / hands return through address position on the way down |
+| P4 | Top of backswing | **Shoulder-line rotation reaches maximum and reverses** |
+| P7 | Impact | Shoulder/hip angular velocity peak; hips return through address orientation |
 | P10 | Finish | Motion energy returns to near-zero after P7 |
+
+> **Do not detect events from wrist velocity.** Phase 0 on real DTL footage measured
+> wrist/arm visibility at 0.62–0.74 mean with **30–42% of frames below 0.5**, while
+> shoulders and hips sat at **1.00 with 0% bad frames**. Wrists are the noisiest
+> signal available; shoulders and hips are the cleanest. Since the top of the
+> backswing is equally well defined by shoulder rotation reversing, key every event
+> off the torso, not the hands. This is measured on this project's own footage, not a
+> general claim about MediaPipe.
 
 **Every metric is measured at, or between, these frames.** Get this right and the rest is arithmetic.
 This is also the highest-risk component — budget the most time here.
@@ -103,6 +111,15 @@ video.mp4 (60fps now, 120/240fps later — fps read from ffprobe, never assumed)
   The `z` coordinate is relative-depth and noisy; treat with suspicion, prefer 2D reasoning.
 - **smooth**: smoothing must precede any differentiation. Differentiating raw noisy keypoints is catastrophic
   for velocity-based event detection. SavGol window ~7–11 frames at 120fps, polyorder 2–3.
+- **ingest — iPhone clips are variable frame rate.** Measured on real footage: nominal 60.00 fps but
+  `avg_frame_rate` 55.61; 59.94 nominal vs 54.00 average. OpenCV also returns fewer frames than `nb_frames`
+  advertises (351 → 322). **Computing time as `frame_index / fps` therefore drifts**, which corrupts tempo
+  and any velocity threshold. Read real presentation timestamps (`CAP_PROP_POS_MSEC`, or decode PTS via
+  ffprobe `-show_frames`) and store a per-frame time array rather than assuming a constant interval.
+- **ingest — rotation sign is easy to invert.** ffprobe reports the display-matrix angle, so the correction
+  is its **negative**: a clip tagged `rotation=-90` needs a 90° **clockwise** rotation. Verify against a
+  frame extracted with ffmpeg (which applies rotation correctly) rather than guessing — getting this backwards
+  yields an upside-down skeleton whose angles look plausible but are wrong.
 
 ---
 
