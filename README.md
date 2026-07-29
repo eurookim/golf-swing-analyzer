@@ -12,14 +12,20 @@ rules, and design rationale.
 
 ## Status
 
-**Phase 0 — not started.** Nothing built yet.
+**Phase 1 complete.** Phase 0 returned **GO** — 100% pose detection on all clips,
+with shoulders and hips at 1.00 visibility.
+
+```bash
+.venv/bin/python -m golfswing      # extract + cache keypoints from data/raw/
+.venv/bin/pytest -q                # 58 tests
+```
 
 **v1 angle: down-the-line only.** Face-on deferred to v2.
 
 | Phase | Deliverable | Status |
 |-------|-------------|--------|
-| **0** | Run MediaPipe on existing 60fps DTL clips, dump annotated video. **GO / NO-GO.** | ☐ |
-| **1** | `ingest` + `pose` + smoothing + persisted keypoints (CLI only) | ☐ |
+| **0** | Run MediaPipe on existing 60fps DTL clips, dump annotated video. **GO / NO-GO.** | ✅ |
+| **1** | `ingest` + `pose` + smoothing + persisted keypoints (CLI only) | ✅ |
 | **2** | Event detection (P1/P4/P7/P10) + hand-labeled ground-truth set | ☐ |
 | **3** | DTL metrics with shoulder-width normalization | ☐ |
 | **4** | Fault rules + per-club `thresholds.yaml` + tuning | ☐ |
