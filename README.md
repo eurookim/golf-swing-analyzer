@@ -31,7 +31,7 @@ them at **P7 0.8 / P4 2.0 frames** mean absolute error.
 | **1** | `ingest` + `pose` + smoothing + persisted keypoints (CLI only) | ✅ |
 | **2** | Event detection (P1/P4/P7/P10) + hand-labeled ground-truth set | ✅ |
 | **3** | DTL metrics with torso-length normalization | ✅ |
-| **4** | Fault rules + per-club `thresholds.yaml` + tuning | ☐ |
+| **4** | Fault rules + per-club `thresholds.yaml` + tuning | 🔄 engine done, thresholds uncalibrated |
 | **5** | Streamlit UI, SQLite history, trend charts | ☐ |
 | **6** | Swing segmentation — split a continuous range video into individual swings | ☐ |
 | **7** | *Optional.* Shaft-line detection → swing plane. Decide after Phase 3. | ☐ |

@@ -1,0 +1,46 @@
+# Fault thresholds.
+#
+# ⚠️  EVERY NUMBER HERE IS INVENTED. They are starting points, not truth.
+#
+# Calibrating them is the whole point of the 15-clip single-session set with
+# deliberately exaggerated faults: if the early-extension rule does not fire on
+# a swing where you deliberately stood up, the threshold is wrong. Until that
+# set exists, treat every firing as a hypothesis.
+#
+# Units:
+#   degrees        — spine angles, knee angles
+#   torso lengths  — hip depth, head rise (normalised, see metrics.py)
+#   ratio          — tempo (backswing seconds / downswing seconds)
+#
+# Per-club sections override `default`. A driver's extra spine tilt away from
+# the target is CORRECT technique, so scoring it against iron limits would
+# confidently report a fault for a good position.
+
+default:
+  # Spine angle at the top differs from address, either direction.
+  loss_of_posture: 8.0
+
+  # Head rises during the backswing, as a fraction of torso length.
+  head_lift: 0.03
+
+  # Hips move toward the ball between address and impact.
+  early_extension: 0.04
+
+  # Trail leg straightens through impact, in degrees.
+  knee_straightening: 15.0
+
+  # Backswing:downswing ratio BELOW this is "quick".
+  # Report relative to your own history, never against the ~3:1 tour figure —
+  # P1 carries ~8 frames of error and the ratio compounds it at both ends.
+  quick_tempo: 2.2
+
+driver:
+  # Wider stance, ball forward, ~5-10 degrees more spine tilt away from target
+  # at address. More movement is normal, so the limits are looser.
+  loss_of_posture: 11.0
+  early_extension: 0.06
+
+wedge:
+  # Shorter, more controlled swing — less movement is expected, so tighter.
+  loss_of_posture: 6.0
+  early_extension: 0.03
