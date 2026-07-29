@@ -1,0 +1,18 @@
+[project]
+name = "golfswing"
+version = "0.1.0"
+description = "Local golf swing video analyzer — named faults + metrics from down-the-line footage"
+requires-python = ">=3.11"
+dependencies = [
+    "mediapipe",
+    "opencv-python",
+    "numpy",
+    "scipy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

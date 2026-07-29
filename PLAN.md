@@ -111,11 +111,16 @@ video.mp4 (60fps now, 120/240fps later — fps read from ffprobe, never assumed)
   The `z` coordinate is relative-depth and noisy; treat with suspicion, prefer 2D reasoning.
 - **smooth**: smoothing must precede any differentiation. Differentiating raw noisy keypoints is catastrophic
   for velocity-based event detection. SavGol window ~7–11 frames at 120fps, polyorder 2–3.
-- **ingest — iPhone clips are variable frame rate.** Measured on real footage: nominal 60.00 fps but
-  `avg_frame_rate` 55.61; 59.94 nominal vs 54.00 average. OpenCV also returns fewer frames than `nb_frames`
-  advertises (351 → 322). **Computing time as `frame_index / fps` therefore drifts**, which corrupts tempo
-  and any velocity threshold. Read real presentation timestamps (`CAP_PROP_POS_MSEC`, or decode PTS via
-  ffprobe `-show_frames`) and store a per-frame time array rather than assuming a constant interval.
+- **ingest — `nb_frames` lies; frame timing does not.** Measured on real footage: ffprobe advertises 351
+  frames but the decoder returns 322, and reports `avg_frame_rate` 55.61 against a nominal 60.00. That gap is
+  an unreliable `nb_frames` estimate (`avg_frame_rate = nb_frames / duration`), **not** uneven frame spacing —
+  actual decoded intervals are a constant 16.67 ms, and `index / fps` agrees with real timestamps to within
+  3 ms across a whole clip. So: **never size an array from `nb_frames`** (the decoded count is the correct
+  one — it matches `duration × fps`), but do not expect timing drift either. Real presentation timestamps
+  (`CAP_PROP_POS_MSEC`) are still what we store — they cost nothing and stay correct if a clip ever does
+  arrive with dropped frames.
+- **ingest — `CAP_PROP_POS_MSEC` must be read AFTER `cap.read()`.** Reading it beforehand returns the previous
+  frame's time, so frames 0 and 1 both come back as 0.0 and the series is no longer monotonic.
 - **ingest — rotation sign is easy to invert.** ffprobe reports the display-matrix angle, so the correction
   is its **negative**: a clip tagged `rotation=-90` needs a 90° **clockwise** rotation. Verify against a
   frame extracted with ffmpeg (which applies rotation correctly) rather than guessing — getting this backwards
