@@ -1,0 +1,64 @@
+# ---------------------------------------------------------------------------
+# Swing videos — NEVER commit these.
+# A single 240fps slo-mo clip runs to hundreds of MB. GitHub hard-rejects any
+# file over 100MB, and anything committed stays in history permanently even
+# after you delete it. Keep raw footage local.
+# ---------------------------------------------------------------------------
+*.mp4
+*.MP4
+*.mov
+*.MOV
+*.avi
+*.mkv
+*.m4v
+
+data/raw/
+data/processed/
+
+# Hand-labeled ground truth (data/labels/) is deliberately NOT ignored —
+# it's small, it's the highest-value artifact in the project, and losing it
+# means re-labeling every clip by hand.
+
+# ---------------------------------------------------------------------------
+# Derived artifacts — regenerable from raw video, so keep them out
+# ---------------------------------------------------------------------------
+*.npz
+*.npy
+*.parquet
+*.sqlite
+*.sqlite3
+*.db
+outputs/
+annotated/
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# ---------------------------------------------------------------------------
+# Secrets & environment
+# ---------------------------------------------------------------------------
+.env
+.env.local
+*.key
+
+# ---------------------------------------------------------------------------
+# OS / editor
+# ---------------------------------------------------------------------------
+.DS_Store
+.vscode/
+.idea/
+*.swp
