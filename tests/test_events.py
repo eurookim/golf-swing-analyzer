@@ -23,25 +23,41 @@ def _still(n=60):
     return lm
 
 
+FLAT_TAKEAWAY = 10  # frames of horizontal-only club movement at the start
+
+
 def _synthetic_swing(n=140, p1=30, p4=60, p7=80):
     """A swing with known event frames.
 
-    Deliberately gives the FOLLOW-THROUGH a higher wrist peak (0.66) than the
-    backswing (0.62) — that is what the real clips do, and it is the trap that
-    breaks a naive global-maximum search for the top of the backswing.
+    Two traps from real footage are built in deliberately:
+
+    1. The FOLLOW-THROUGH peaks higher (0.66) than the backswing (0.62), which
+       breaks a naive global-maximum search for the top.
+    2. The takeaway is HORIZONTAL for its first `FLAT_TAKEAWAY` frames — the club
+       travels back before it travels up, so wrist HEIGHT stays flat while the
+       hands are already moving. Detecting address from height alone lands late.
     """
     lm = np.zeros((n, 33, 4))
     lm[:, :, 3] = 1.0
 
+    lift = p1 + FLAT_TAKEAWAY
     height = np.full(n, 0.40)
-    height[p1:p4 + 1] = np.linspace(0.40, 0.62, p4 - p1 + 1)      # backswing
-    height[p4:p7 + 1] = np.linspace(0.62, 0.34, p7 - p4 + 1)      # downswing
+    height[lift:p4 + 1] = np.linspace(0.40, 0.62, p4 - lift + 1)   # backswing lift
+    height[p4:p7 + 1] = np.linspace(0.62, 0.34, p7 - p4 + 1)       # downswing
     follow_end = min(p7 + 22, n)
     height[p7:follow_end] = np.linspace(0.34, 0.66, follow_end - p7)
     height[follow_end:] = np.linspace(0.66, 0.45, n - follow_end)
 
     lm[:, L_WR, 1] = 1.0 - height
     lm[:, R_WR, 1] = 1.0 - height
+
+    # Hands travel backwards horizontally from p1, including through the flat
+    # part where height reveals nothing.
+    hand_x = np.zeros(n)
+    hand_x[p1:p4 + 1] = np.linspace(0.0, 0.25, p4 - p1 + 1)
+    hand_x[p4:] = 0.25
+    lm[:, L_WR, 0] += hand_x
+    lm[:, R_WR, 0] += hand_x
 
     # Torso: a velocity burst peaking exactly at p7, decaying fast afterwards —
     # the torso stops well before the swing does.
@@ -53,9 +69,11 @@ def _synthetic_swing(n=140, p1=30, p4=60, p7=80):
 
     # Arms keep travelling through the follow-through and only settle at
     # p7 + 30. This is the real behaviour the torso-only finish test missed.
+    # NOTE: must accumulate, not assign — assigning here would wipe out the
+    # backswing hand travel set above and silently change what the tests mean.
     arm_motion = np.exp(-((np.arange(n) - p7) ** 2) / (2 * 12.0 ** 2))
-    lm[:, L_WR, 0] = np.cumsum(arm_motion) * 0.01
-    lm[:, R_WR, 0] = np.cumsum(arm_motion) * 0.01
+    lm[:, L_WR, 0] += np.cumsum(arm_motion) * 0.01
+    lm[:, R_WR, 0] += np.cumsum(arm_motion) * 0.01
 
     return lm
 
@@ -124,6 +142,33 @@ class TestDetectEvents:
         got = events.detect_events(_sequence(_synthetic_swing(p1=30, p4=60)))
         assert got.p1 == pytest.approx(30, abs=6)
         assert got.p1 < got.p4
+
+    def test_address_is_when_the_hands_start_moving_not_when_they_rise(self):
+        """The club goes BACK before it goes UP.
+
+        Verified on real footage: detecting address from wrist height alone put
+        P1 well into the takeaway on all three clips, with the club visibly
+        lifted. A late P1 shortens the measured backswing and drags the tempo
+        ratio down, which is what made three swings read 1.5-2.0:1 against a
+        ~3:1 norm.
+        """
+        p1 = 30
+        got = events.detect_events(_sequence(_synthetic_swing(p1=p1, p4=60)))
+
+        assert got.p1 < p1 + FLAT_TAKEAWAY, (
+            f"P1 at frame {got.p1} is inside the flat takeaway "
+            f"(starts {p1}, lift begins {p1 + FLAT_TAKEAWAY}) — detected from "
+            f"height rather than motion onset"
+        )
+
+    def test_address_ignores_a_waggle(self):
+        """A pre-shot waggle is motion, but it is not the takeaway."""
+        lm = _synthetic_swing(p1=40, p4=70, p7=90)
+        lm[10:16, [L_WR, R_WR], 0] += 0.02   # brief jiggle, then still again
+
+        got = events.detect_events(_sequence(lm))
+
+        assert got.p1 > 20, f"P1 at {got.p1} latched onto the waggle"
 
     def test_events_are_ordered(self):
         got = events.detect_events(_sequence(_synthetic_swing()))

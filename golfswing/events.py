@@ -28,8 +28,12 @@ UPPER_BODY = (11, 12, 13, 14, 15, 16, 23, 24)
 # Impact must stand this far above the median to count as a swing at all.
 MIN_PEAK_OVER_BASELINE = 3.0
 
-# Address is the last frame still within this fraction of the backswing's rise.
-ADDRESS_TOLERANCE = 0.05
+# Hands are "still" below this fraction of the backswing's typical hand speed.
+ADDRESS_MOTION_FRACTION = 0.15
+
+# Stillness must persist this long to count as address rather than a waggle
+# pause. Specified in seconds so it behaves the same at 60fps and 240fps.
+ADDRESS_STILL_SECONDS = 0.05
 
 # Finish is where speed first falls back to this fraction of the impact spike.
 FINISH_TOLERANCE = 0.10
@@ -84,6 +88,43 @@ def upper_body_speed(sequence: PoseSequence) -> np.ndarray:
     return _mean_speed(sequence, UPPER_BODY)
 
 
+def hand_speed(sequence: PoseSequence) -> np.ndarray:
+    """Speed of the hands — the address signal."""
+    return _mean_speed(sequence, (LEFT_WRIST, RIGHT_WRIST))
+
+
+def _find_address(sequence: PoseSequence, p4: int) -> int:
+    """Last frame before the top at which the hands are still.
+
+    Scans backward from the top so an earlier waggle is never reached.
+    """
+    speed = hand_speed(sequence)[: p4 + 1]
+    if len(speed) < 2:
+        return 0
+
+    # 75th percentile as the "moving" scale: robust to a one-frame waggle spike
+    # in a way that a plain maximum is not.
+    scale = float(np.nanpercentile(speed, 75))
+    if not np.isfinite(scale) or scale <= 0:
+        return 0
+    threshold = ADDRESS_MOTION_FRACTION * scale
+
+    fps = sequence.fps if sequence.fps > 0 else 60.0
+    min_still = max(3, int(round(ADDRESS_STILL_SECONDS * fps)))
+
+    still = speed <= threshold
+    run = 0
+    for i in range(len(speed) - 1, -1, -1):
+        if still[i]:
+            run += 1
+            if run >= min_still:
+                # Last frame of this still stretch — the one nearest the top.
+                return int(i + run - 1)
+        else:
+            run = 0
+    return 0
+
+
 def detect_events(sequence: PoseSequence) -> SwingEvents:
     """Locate P1 / P4 / P7 / P10.
 
@@ -112,15 +153,17 @@ def detect_events(sequence: PoseSequence) -> SwingEvents:
     # on real footage the follow-through often peaks higher than the backswing.
     p4 = int(np.nanargmax(height[:p7]))
 
-    # P1: last frame still at address height, walking back from the top.
-    pre = height[: p4 + 1]
-    base = float(np.nanmin(pre))
-    rise = float(height[p4]) - base
-    if rise <= 0:
-        p1 = 0
-    else:
-        at_address = np.where(pre <= base + ADDRESS_TOLERANCE * rise)[0]
-        p1 = int(at_address[-1]) if len(at_address) else 0
+    # P1: the last frame the hands are still, walking BACK from the top.
+    #
+    # Keyed on hand MOTION, not hand height. The club travels back before it
+    # travels up, so height stays flat through the early takeaway and a
+    # height-based rule lands well inside the backswing with the club already
+    # lifted — verified on all three clips.
+    #
+    # Walking backward (rather than forward from frame 0) is what makes a
+    # pre-shot waggle harmless: the search stops at the first sustained still
+    # period before the top and never reaches the waggle.
+    p1 = _find_address(sequence, p4)
 
     # P10: first frame after impact where the WHOLE upper body has settled.
     # Judging this on torso speed alone lands mid-follow-through, because the
