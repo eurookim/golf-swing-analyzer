@@ -110,6 +110,37 @@ Thresholds live in `thresholds.yaml`, never in code — tuning these is the main
 
 ---
 
+## Data & storage
+
+**`data/raw/` is precious. Everything else is disposable.**
+
+```
+data/raw/2026-07-28_faceon_7iron.mov     original — never modified, never auto-deleted
+      ├──▶ data/processed/swing_014.npz   keypoints, ~2 MB, regenerable
+      ├──▶ outputs/swing_014_annotated.mp4 skeleton overlay, regenerable
+      └──▶ swings.db                       metrics + faults + the PATH above
+```
+
+The database never contains video — it stores the file path alongside that swing's
+metrics. Video-as-blob makes the DB unusable.
+
+Size reality: ~30–40 MB per 10s clip at 1080p/240fps (~125 MB at 4K/120fps), so 100
+swings ≈ 5 GB. The entire metrics database is ~2 KB per swing — 1,000 swings is
+about 2 MB, smaller than a single clip. Storage will never be the constraint.
+
+**No upload widget — scan the folder instead.** Streamlit's uploader hands you an
+in-memory buffer and saves nothing to disk; used naively you'd keep the metrics and
+lose the video. It's also pointless locally: the file is already on the same disk.
+Instead, drop clips into `data/raw/`, have the app list any video not yet in the
+database, and click one to analyze. Makes batch-processing a whole range session
+natural too.
+
+**Backup:** keep the project folder in iCloud Drive. `*.sqlite` is gitignored on
+purpose (binary DBs bloat history and conflict badly) — if git should be the safety
+net, add a small tracked `history.csv` export instead.
+
+---
+
 ## Stack
 
 Single user, local, "make it real" effort — so the weeks go into *analysis quality*, not deployment plumbing.
@@ -157,3 +188,16 @@ abandoned in week 3.
 - **Down-the-line**: on the target line behind you, hand height, ~10–12 ft.
 - **Fitted clothing**, contrasting with the background. Baggy clothes badly degrade pose estimation.
 - Record both angles of the same swing where possible; label filenames with angle + club.
+- **Same club throughout** (7-iron) for the first session — fewer variables.
+
+### Film deliberate faults, not just your normal swing
+
+Shoot ~15 clips: **8 normal, 6 with one exaggerated fault each** (sway off the ball,
+lose posture, stand up through impact, reverse pivot, quick tempo), 1 slow practice swing.
+
+If every clip is your ordinary swing there is nothing to calibrate against — every
+threshold in `thresholds.yaml` stays a guess and you can't distinguish a working
+detector from a broken one. Exaggerated faults give known-positive examples: if the
+early-extension rule doesn't fire on a swing where you deliberately stood up, the rule
+is wrong. This turns Phase 4 from guesswork into measurement.
+
