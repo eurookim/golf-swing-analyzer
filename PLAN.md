@@ -132,6 +132,37 @@ P7 was validated on a **held-out clip** that influenced no tuning decision: erro
 frames, alongside P4 error 0. That is real evidence the shoulder-width signal
 generalises rather than fitting the clips it was selected on.
 
+### The P1 decision: operational definition, relative tempo
+
+The detector is **deterministic** — it fires when hand speed crosses 15% of the
+backswing scale, identically every time. It does not disagree with itself; it
+disagrees with a human criterion that moved 5 frames between two attempts at the
+same event. Treat the algorithm as the **definition** of P1, not as an approximation
+of a truth that does not exist at frame precision.
+
+A consistent offset cancels out of any comparison against your own history:
+
+- ❌ *"Tempo 2.13:1, tour average 3:1"* — the offset makes this misleading
+- ✅ *"Tempo was 2.8 in July, 3.1 now"* — the offset cancels, the change is real
+
+So **tempo is a relative metric here, never an absolute one.** Do not print a tour
+benchmark beside it. This is design principle 6 (compare against your own best swing)
+arriving as a measurement constraint rather than a motivational preference.
+
+Rules:
+
+1. Keep P1 as-is. Do not tune it further — four changes deep against ground truth
+   carrying ±5 frames of its own noise risks fitting four clips.
+2. Report tempo against personal history only.
+3. Flag tempo low-confidence in the UI. It is the one metric that genuinely earns it.
+4. Revisit after the 15-clip single-session set: fifteen swings with an identical
+   setup is the only thing that distinguishes "stably offset" from "genuinely
+   unstable." Four clips from four sessions cannot.
+
+**The one thing that would actually fix P1 is the club.** The takeaway is *defined*
+by club movement — visible in the frames, invisible to a body-only signal. That is a
+second, independent reason to want Phase 7 beyond swing plane.
+
 Fallback if heuristics prove fragile: the **GolfDB** dataset (McNally et al., 2019) — ~1400 labeled swing
 videos with 8 event frames each, plus a baseline model (SwingNet). Worth knowing it exists before hand-rolling
 something complicated.
@@ -190,7 +221,7 @@ Key landmarks: 11/12 shoulders, 23/24 hips, 25/26 knees, 27/28 ankles, 15/16 wri
 | Spine tilt | mid-hip→mid-shoulder vector vs vertical, at P1 / P4 / P7 | ✅ at P1, P4 |
 | Posture change | spine tilt at P4 minus spine tilt at P1 | ✅ |
 | Hip depth | hip horizontal distance from the address butt-line (a vertical line at the hips at P1) | ⚠️ needs P7 |
-| Head height | nose vertical position vs P1, normalized by shoulder width | ✅ P1→P4 |
+| Head height | nose vertical position vs P1, normalized by torso length | ✅ P1→P4 |
 | Head depth | nose horizontal drift toward/away from the ball | ⚠️ partial |
 | Knee flex | knee angle at P1 vs P7 | ⚠️ needs P7 |
 | Tempo ratio | `(P4−P1) / (P7−P4)` in **seconds**. Tour average ≈ 3:1 | ⚠️ ±7% |
@@ -205,15 +236,32 @@ movement toward the ball is horizontal movement in frame. That's what makes earl
 | Shoulder turn | `arccos(current_shoulder_width / address_shoulder_width)` — foreshortening trick |
 | Hip turn | same trick on the hip line |
 | X-factor | shoulder turn − hip turn at P4 (good players ~40–50°) |
-| Weight shift | mid-hip horizontal position over time, normalized by shoulder width |
+| Weight shift | mid-hip horizontal position over time, normalized by torso length |
 
-**Normalization is mandatory, and the reference must be club-invariant.** Divide every pixel distance by
-**shoulder width** (or hip→shoulder distance). Otherwise standing 2 feet closer to the camera silently changes
-all your numbers and session-over-session comparison is meaningless.
+**Normalization is mandatory. Divide every pixel distance by TORSO LENGTH** (hip→shoulder distance).
+Otherwise standing 2 feet closer to the camera silently changes all your numbers and session-over-session
+comparison is meaningless.
 
-Do **not** normalize by stance width — stance width changes with club (driver is wider than a 7-iron), so the
-identical physical sway would score differently across clubs and cross-club comparison breaks. Shoulder width
-does not change with club.
+The normaliser must satisfy **two** constraints, and only torso length satisfies both:
+
+| Candidate | Club-invariant? | Viewpoint-invariant? |
+|-----------|-----------------|----------------------|
+| Stance width | ❌ driver stance is wider than a 7-iron | ✅ |
+| Shoulder width | ✅ | ❌ **foreshortens badly in DTL** |
+| **Torso length** | ✅ | ✅ |
+
+**Why shoulder width fails, measured not assumed:** from down-the-line the shoulder line at address points
+nearly *at* the camera and collapses to almost nothing. Across four clips of the same body it measured
+**0.0087 to 0.0329 — a 3.8× spread**, driven by how square the camera happened to be to the target line rather
+than by anatomy. Dividing by it inflated every length metric by an unpredictable factor: hip depth came out at
+0.29–0.44 (vs a 0.04 threshold) and head rise at −1.29 torso-lengths, which would be a 50cm head drop. With
+torso length those become 0.02–0.08 and −0.11 to −0.39 — physically plausible.
+
+Torso length is a **vertical** measure, so rotation about the body's vertical axis leaves it alone. It does
+shorten slightly as the spine tilts (measured ~12% P1→P7), so take the reference **at P1** and use it for the
+whole swing.
+
+Angles (spine tilt, knee flex) need no normalisation at all — they are scale-free by construction.
 
 ---
 
@@ -250,8 +298,8 @@ Each fault = a pure function over metrics → `(fired, measured_value, threshold
 | Fault | Rough rule | Confidence at 60fps |
 |-------|------------|---------------------|
 | Loss of posture | spine tilt at P4 differs from P1 by > 8° | **Solid** |
-| Head lift | nose rises > 3% of shoulder width, P1→P4 | **Solid** |
-| Early extension | hips move ballward > 4% of shoulder width between P4 and P7 | Directional |
+| Head lift | nose rises > 3% of torso length, P1→P4 | **Solid** |
+| Early extension | hips move ballward > 4% of torso length between P4 and P7 | Directional |
 | Excessive knee straightening | trail knee angle at P7 exceeds P1 by > 15° | Directional |
 | Quick tempo | tempo ratio < 2.2 | Rough |
 
@@ -259,7 +307,7 @@ Each fault = a pure function over metrics → `(fired, measured_value, threshold
 
 | Fault | Rough rule |
 |-------|------------|
-| Sway | mid-hip drifts away from target > 6% of shoulder width at P4 |
+| Sway | mid-hip drifts away from target > 6% of torso length at P4 |
 | Slide | excessive lateral hip drift toward target at P7 |
 | Reverse pivot | head/weight moves *toward* target during backswing |
 | Restricted turn | shoulder turn at P4 < 80° |
