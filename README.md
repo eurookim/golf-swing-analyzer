@@ -12,12 +12,15 @@ rules, and design rationale.
 
 ## Status
 
-**Phase 1 complete.** Phase 0 returned **GO** — 100% pose detection on all clips,
-with shoulders and hips at 1.00 visibility.
+**Phase 3 complete.** Four clips hand-labeled; event detection measured against
+them at **P7 0.8 / P4 2.0 frames** mean absolute error.
 
 ```bash
-.venv/bin/python -m golfswing      # extract + cache keypoints from data/raw/
-.venv/bin/pytest -q                # 58 tests
+.venv/bin/python -m golfswing              # extract + cache keypoints
+.venv/bin/python render_contact_sheet.py   # 4 key frames per swing
+.venv/bin/python label_swing.py            # frames around each event, for labeling
+.venv/bin/python evaluate_events.py        # score detector vs verified ground truth
+.venv/bin/pytest -q                        # 132 tests
 ```
 
 **v1 angle: down-the-line only.** Face-on deferred to v2.
@@ -26,7 +29,7 @@ with shoulders and hips at 1.00 visibility.
 |-------|-------------|--------|
 | **0** | Run MediaPipe on existing 60fps DTL clips, dump annotated video. **GO / NO-GO.** | ✅ |
 | **1** | `ingest` + `pose` + smoothing + persisted keypoints (CLI only) | ✅ |
-| **2** | Event detection (P1/P4/P7/P10) + hand-labeled ground-truth set | ☐ |
+| **2** | Event detection (P1/P4/P7/P10) + hand-labeled ground-truth set | ✅ |
 | **3** | DTL metrics with torso-length normalization | ✅ |
 | **4** | Fault rules + per-club `thresholds.yaml` + tuning | ☐ |
 | **5** | Streamlit UI, SQLite history, trend charts | ☐ |
@@ -44,7 +47,7 @@ with shoulders and hips at 1.00 visibility.
    always read from `ffprobe`, never assumed.**
 2. **The club is invisible.** MediaPipe gives 33 *body* joints and nothing about
    the club. Body-driven metrics are cheap; swing plane and club path need a
-   separate detector — optional Phase 6.
+   separate detector — optional Phase 7.
 3. **Camera angle changes the meaning of every metric.** Face-on and
    down-the-line support different metrics. Every video is tagged with its angle
    at ingest, and only angle-valid metrics are computed.
