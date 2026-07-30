@@ -168,6 +168,7 @@ def page_swing(rows):
             st.caption(f"No video at {RAW_DIR}/{chosen}.*")
 
     with stats_col:
+        st.markdown(ui.summary(found), unsafe_allow_html=True)
         if top:
             # Only claim something stands out when it measurably does — the
             # honest headline for a typical swing is that it was typical.
@@ -208,12 +209,22 @@ def page_swing(rows):
         "signal until a session of genuinely exaggerated faults exists."
     )
 
+    with st.expander("What do these measurements mean?"):
+        st.markdown(ui.guidance(), unsafe_allow_html=True)
+        st.caption(
+            "\"Steadier than usual\" compares this swing with the median of "
+            "your own swings using the same club. It is not a verdict on "
+            "whether the swing was good — this app has no validated standard "
+            "for that, and would be guessing if it claimed one."
+        )
+
 
 def _swing_picker(clips: list[str]) -> str:
     """Sidebar chooser plus prev/next, for flipping through a session."""
     if "clip_index" not in st.session_state:
         st.session_state.clip_index = len(clips) - 1
-    st.session_state.clip_index = min(st.session_state.clip_index, len(clips) - 1)
+    st.session_state.clip_index = ui.clamp_index(
+        st.session_state.clip_index, len(clips))
 
     st.sidebar.markdown("**Swing**")
     back, forward = st.sidebar.columns(2)
@@ -225,7 +236,8 @@ def _swing_picker(clips: list[str]) -> str:
         st.session_state.clip_index += 1
 
     chosen = st.sidebar.selectbox(
-        "Swing", clips, index=st.session_state.clip_index,
+        "Swing", clips,
+        index=ui.clamp_index(st.session_state.clip_index, len(clips)),
         label_visibility="collapsed",
     )
     # Keep the arrows in step when the dropdown is used directly.

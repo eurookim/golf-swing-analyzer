@@ -267,3 +267,68 @@ class TestTileGrid:
         from golfswing import ui
         html = ui.tile_grid(self._standings(1, 17, 9))
         assert html.count("metric-tile") == 3
+
+
+class TestClampIndex:
+    """Prev at the first swing drove the index to -1, which Streamlit rejects
+    with 'Selectbox index must be >= 0 and < length of options'. The upper
+    bound was clamped; the lower bound was not."""
+
+    def test_negative_index_clamps_to_the_first(self):
+        from golfswing import ui
+        assert ui.clamp_index(-1, 24) == 0
+
+    def test_index_past_the_end_clamps_to_the_last(self):
+        from golfswing import ui
+        assert ui.clamp_index(99, 24) == 23
+
+    def test_an_index_inside_the_range_is_untouched(self):
+        from golfswing import ui
+        assert ui.clamp_index(5, 24) == 5
+
+    def test_an_empty_list_yields_zero_rather_than_minus_one(self):
+        """Switching the club filter can empty the list mid-render."""
+        from golfswing import ui
+        assert ui.clamp_index(3, 0) == 0
+
+
+class TestComparison:
+    """Direction relative to the golfer's own median.
+
+    Not "good" or "bad" against an external standard — there is none. But for
+    most of these, less movement is what every coach is asking for, so
+    "steadier than your typical" is a fair and useful statement.
+    """
+
+    def _standing(self, metric, value, median):
+        return coach.Standing(metric=metric, label="", unit="", meaning="",
+                              value=value, rank=3, n_peers=16, median=median)
+
+    def test_less_head_rise_than_usual_reads_as_better(self):
+        s = self._standing("head_rise_p7", 0.01, 0.05)
+        assert coach.comparison(s) == "better"
+
+    def test_more_head_rise_than_usual_reads_as_worse(self):
+        s = self._standing("head_rise_p7", 0.09, 0.05)
+        assert coach.comparison(s) == "worse"
+
+    def test_a_value_near_the_median_reads_as_typical(self):
+        s = self._standing("head_rise_p7", 0.0505, 0.05)
+        assert coach.comparison(s) == "typical"
+
+    def test_magnitude_is_what_matters_not_sign(self):
+        """-0.09 of head rise is as much movement as +0.09."""
+        s = self._standing("head_rise_p7", -0.09, 0.01)
+        assert coach.comparison(s) == "worse"
+
+    def test_tempo_is_judged_against_the_classic_ratio_not_zero(self):
+        # 3:1 is the widely-cited ideal; nearer to it is better.
+        near = self._standing("tempo_ratio", 3.1, 4.5)
+        far = self._standing("tempo_ratio", 5.5, 4.5)
+        assert coach.comparison(near) == "better"
+        assert coach.comparison(far) == "worse"
+
+    def test_unrankable_metrics_have_no_verdict(self):
+        s = coach.Standing(metric="head_rise_p7", label="", unit="", meaning="",
+                           value=1.0, rank=None, n_peers=3, median=None)
+        assert coach.comparison(s) is None

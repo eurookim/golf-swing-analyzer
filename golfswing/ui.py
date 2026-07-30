@@ -20,7 +20,8 @@ The palette is the dataviz-validated one (all six checks pass, CVD ΔE 24.7).
 
 from __future__ import annotations
 
-from golfswing.coach import Standing, extremity, rank_phrase
+from golfswing.coach import (COACHING_METRICS, Standing, comparison,
+                            extremity, rank_phrase)
 
 SURFACE = "#fcfcfb"
 RAISED = "#f4f3ee"
@@ -126,6 +127,35 @@ CSS = """
     color: #b5501f;
   }
 
+  /* Better/worse colours. A naive red+green pair FAILS colourblind checks —
+     deltaE 4.5 under deuteranopia, i.e. identical to a red-green colourblind
+     viewer. This teal-green against the same red passes every check, and the
+     badge always carries words so colour is never the only signal. */
+  .verdict {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 600;
+    border: 1px solid transparent;
+  }
+  .verdict-better { background: #e3f3ec; border-color: #b9e0d0; color: #14654b; }
+  .verdict-worse  { background: #fbe7e5; border-color: #f2c4bf; color: #a3342b; }
+  .verdict-typical{ background: var(--raised); border-color: var(--hairline);
+                    color: var(--secondary); }
+
+  .tile-foot { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  .summary-line {
+    font-size: 15px; line-height: 1.6; color: var(--ink);
+    margin-bottom: 18px;
+  }
+  .summary-line .count { font-weight: 650; }
+
+  .guide-metric { font-size: 14px; line-height: 1.6; color: var(--secondary); }
+  .guide-metric strong { color: var(--ink); }
+  .guide-aim {
+    font-size: 13px; color: var(--muted); margin-top: 2px; display: block;
+  }
+
   .coaching-note {
     background: var(--raised);
     border-left: 2px solid var(--primary);
@@ -158,17 +188,82 @@ CSS = """
 """
 
 
+def clamp_index(index: int, length: int) -> int:
+    """Keep a selectbox index inside range.
+
+    Clamping only the top let Prev drive it to -1 at the first swing, which
+    Streamlit rejects outright ("index must be >= 0 and less than the length of
+    options"). An emptied list must yield 0, not -1.
+    """
+    if length <= 0:
+        return 0
+    return max(0, min(index, length - 1))
+
+
+VERDICT_WORDS = {
+    "better": "steadier than usual",
+    "worse": "more than usual",
+    "typical": "about usual",
+}
+
+
 def tile(standing: Standing, notable: bool = False) -> str:
-    """One large metric. The pill states rank in words, never colour alone."""
+    """One large metric, with rank and a better/worse-than-usual verdict.
+
+    Both badges carry words. The verdict says "than usual" deliberately — it is
+    a comparison against this golfer's own median, not a judgement against any
+    external standard, because no calibrated standard exists here.
+    """
     pill = "rank-pill is-notable" if notable else "rank-pill"
+    verdict = comparison(standing)
+    badge = ""
+    if verdict:
+        badge = (f'<span class="verdict verdict-{verdict}">'
+                 f'{VERDICT_WORDS[verdict]}</span>')
     return (
         f'<div class="metric-tile">'
         f'  <div class="label">{standing.label.split(",")[0]}</div>'
         f'  <div class="value">{standing.value:+.2f}'
         f'    <span class="unit">{standing.unit}</span></div>'
-        f'  <span class="{pill}">{rank_phrase(standing)}</span>'
+        f'  <div class="tile-foot">'
+        f'    {badge}<span class="{pill}">{rank_phrase(standing)}</span>'
+        f'  </div>'
         f'</div>'
     )
+
+
+def summary(found: list[Standing]) -> str:
+    """One sentence answering "so how was that swing?" before any numbers."""
+    verdicts = [comparison(s) for s in found]
+    better = verdicts.count("better")
+    worse = verdicts.count("worse")
+    scored = better + worse + verdicts.count("typical")
+
+    if scored == 0:
+        return ('<div class="summary-line">Not enough swings on record yet to '
+                'say how this one compares.</div>')
+    if better > worse:
+        lead = f"<span class='count'>{better} of {scored}</span> measurements " \
+               "were steadier than your typical swing."
+    elif worse > better:
+        lead = f"<span class='count'>{worse} of {scored}</span> measurements " \
+               "showed more movement than your typical swing."
+    else:
+        lead = "This swing sat close to your typical numbers."
+    return (f'<div class="summary-line">{lead} '
+            f'<span style="color:var(--muted)">Compared against your own swings '
+            f'with the same club — not a pass/fail standard.</span></div>')
+
+
+def guidance() -> str:
+    """Plain-English explainer: what each measurement is and what to aim for."""
+    parts = []
+    for meta in COACHING_METRICS.values():
+        parts.append(
+            f'<p class="guide-metric"><strong>{meta.label.split(",")[0]}</strong> — '
+            f'{meta.plain}<span class="guide-aim">Aim: {meta.aim}</span></p>'
+        )
+    return "".join(parts)
 
 
 def tile_grid(found: list[Standing]) -> str:

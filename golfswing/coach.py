@@ -27,7 +27,9 @@ MIN_PEERS_FOR_RANKING = 5
 class Metric:
     label: str
     unit: str
-    meaning: str
+    meaning: str      # for the language model: precise, technical
+    plain: str        # for the golfer: what it is and why it matters
+    aim: str          # what "better" looks like, in one phrase
 
 
 # Semantic descriptions, not display labels — the model needs to know what the
@@ -38,29 +40,51 @@ COACHING_METRICS: dict[str, Metric] = {
         "Posture change, address to top", "degrees",
         "how much the forward spine tilt changes during the backswing; "
         "negative means standing up out of the address posture",
+        plain="How much your spine angle changes between address and the top of "
+              "your backswing. If you stand up out of your posture going back, "
+              "you have to find your way back down before impact.",
+        aim="closer to 0 — hold the angle you set at address",
     ),
     "hip_depth_change": Metric(
         "Hip movement toward the ball", "torso lengths",
         "how far the hips travel toward the ball between address and impact; "
         "large positive values are the early-extension pattern",
+        plain="How far your hips drift toward the ball on the way down — the "
+              "move usually called early extension. It steals room for your "
+              "arms, so you have to stand up or flip the hands to make contact.",
+        aim="closer to 0 — keep your backside where it started",
     ),
     "head_rise_p4": Metric(
         "Head rise, address to top", "torso lengths",
         "positive means the head is higher at the top than at address",
+        plain="Whether your head lifts or drops between address and the top. "
+              "Moving it changes how far you are from the ball.",
+        aim="closer to 0 — steady head height going back",
     ),
     "head_rise_p7": Metric(
         "Head rise, address to impact", "torso lengths",
         "positive means the head is higher at impact than at address",
+        plain="Whether your head is higher or lower at impact than at address. "
+              "This one shows up in your strike: lift and you thin it, drop "
+              "and you catch it heavy.",
+        aim="closer to 0 — same height at impact as at address",
     ),
     "knee_extension_change": Metric(
         "Knee straightening", "degrees",
         "how much the knees straighten from address to impact",
+        plain="How much your knees straighten from address to impact. Some is "
+              "normal and powerful; a lot of it pulls you up out of the shot.",
+        aim="a smaller change than usual for you",
     ),
     "tempo_ratio": Metric(
         "Tempo ratio", "backswing : downswing",
         "time from takeaway to the top divided by time from the top to impact; "
         "tour players are commonly near 3:1, but this measurement is the least "
         "reliable one here because it compounds errors in two event timings",
+        plain="How long your backswing takes compared with your downswing. Many "
+              "tour players sit near 3:1. Treat this as the least trustworthy "
+              "number here — it multiplies small timing errors.",
+        aim="nearer 3:1",
     ),
 }
 
@@ -130,6 +154,49 @@ def standings(rows: list[dict], clip: str) -> list[Standing]:
             value=float(value), rank=rank, n_peers=compared, median=median,
         ))
     return found
+
+
+# What "less of this" means per metric. For most, the coaching goal is simply
+# less movement, so zero is the reference. Tempo is the exception: the widely
+# cited ideal is roughly 3:1, so that is what "closer" measures against.
+#
+# This is NOT a calibrated threshold — it says nothing about whether a value is
+# acceptable. It only orients the axis, so "steadier than your own typical" can
+# be stated in a direction a golfer recognises.
+IDEAL: dict[str, float] = {
+    "posture_change": 0.0,
+    "hip_depth_change": 0.0,
+    "head_rise_p4": 0.0,
+    "head_rise_p7": 0.0,
+    "knee_extension_change": 0.0,
+    "tempo_ratio": 3.0,
+}
+
+# Below this relative change, the swing is the same as usual within noise.
+SAME_AS_USUAL = 0.10
+
+
+def comparison(standing: Standing) -> str | None:
+    """'better' | 'worse' | 'typical' versus this golfer's own median.
+
+    Deliberately not a verdict on the swing. It answers "was this steadier than
+    I usually am?", which needs no threshold — only the golfer's own history.
+    """
+    if standing.median is None or standing.rank is None:
+        return None
+    target = IDEAL.get(standing.metric)
+    if target is None:
+        return None
+
+    now = abs(standing.value - target)
+    usual = abs(standing.median - target)
+    if usual == 0:
+        return "typical" if now == 0 else "worse"
+
+    change = (now - usual) / usual
+    if abs(change) < SAME_AS_USUAL:
+        return "typical"
+    return "worse" if change > 0 else "better"
 
 
 def extremity(standing: Standing) -> float:
