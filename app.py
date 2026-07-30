@@ -135,8 +135,10 @@ def page_swing(rows):
         st.info("No swings in history yet.")
         return
 
-    chosen = st.selectbox("Swing", clips, index=len(clips) - 1,
-                          label_visibility="collapsed")
+    # The picker lives in the sidebar with the other controls. Unlabelled at the
+    # top of the page it read as a caption — especially with the heading below
+    # repeating the same name — so it was not discoverable as a control at all.
+    chosen = _swing_picker(clips)
     row = next(r for r in rows if r["clip"] == chosen)
     found = coach.standings(rows, chosen)
     top = coach.standouts(found, count=3)
@@ -213,6 +215,30 @@ def page_swing(rows):
         "verdict is shown — rank within your own swings is the trustworthy "
         "signal until a session of genuinely exaggerated faults exists."
     )
+
+
+def _swing_picker(clips: list[str]) -> str:
+    """Sidebar chooser plus prev/next, for flipping through a session."""
+    if "clip_index" not in st.session_state:
+        st.session_state.clip_index = len(clips) - 1
+    st.session_state.clip_index = min(st.session_state.clip_index, len(clips) - 1)
+
+    st.sidebar.markdown("**Swing**")
+    back, forward = st.sidebar.columns(2)
+    if back.button("← Prev", width="stretch",
+                   disabled=st.session_state.clip_index == 0):
+        st.session_state.clip_index -= 1
+    if forward.button("Next →", width="stretch",
+                      disabled=st.session_state.clip_index >= len(clips) - 1):
+        st.session_state.clip_index += 1
+
+    chosen = st.sidebar.selectbox(
+        "Swing", clips, index=st.session_state.clip_index,
+        label_visibility="collapsed",
+    )
+    # Keep the arrows in step when the dropdown is used directly.
+    st.session_state.clip_index = clips.index(chosen)
+    return chosen
 
 
 def _coaching_note(found, clip):
