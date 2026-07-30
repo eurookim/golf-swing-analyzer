@@ -128,7 +128,7 @@ def page_distributions(rows, thresholds, club):
         st.pyplot(distribution_plot(rows, metric,
                                     limits.get(rule) if rule else None,
                                     rule=rule),
-                  use_container_width=True)
+                  width='stretch')
 
 
 def page_swing(rows, thresholds, club):
@@ -142,7 +142,7 @@ def page_swing(rows, thresholds, club):
 
     sheet = Path("outputs") / f"{chosen}_keyframes.jpg"
     if sheet.exists():
-        st.image(str(sheet), use_container_width=True)
+        st.image(str(sheet), width='stretch')
     else:
         st.caption(f"No key-frame sheet yet — run render_contact_sheet.py {chosen}")
 
@@ -152,7 +152,7 @@ def page_swing(rows, thresholds, club):
         st.dataframe(
             {"metric": list(METRIC_LABELS.values()),
              "value": [row[m] for m in METRIC_LABELS]},
-            hide_index=True, use_container_width=True,
+            hide_index=True, width='stretch',
         )
     with right:
         st.markdown("**Faults**")
@@ -190,7 +190,7 @@ def page_trend(rows):
     ax.set_xticklabels([r["date"][5:] for r in usable], rotation=45, ha="right")
     ax.set_ylabel(METRIC_LABELS[metric], color=INK_2, fontsize=9)
     fig.tight_layout()
-    st.pyplot(fig, use_container_width=True)
+    st.pyplot(fig, width='stretch')
 
 
 def main():

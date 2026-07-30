@@ -68,3 +68,6 @@ env/
 
 # swing history database
 data/swings.db
+
+# app runtime log
+data/app.log
