@@ -179,12 +179,7 @@ def page_swing(rows):
                 "**Nothing stands out — a typical swing for you.** "
                 "Closest to the edges of your usual range:",
                 unsafe_allow_html=True)
-            for tile_row in (top[:2], top[2:]):
-                if not tile_row:
-                    continue
-                columns = st.columns(2, gap="medium")
-                for column, standing in zip(columns, tile_row):
-                    column.markdown(ui.tile(standing), unsafe_allow_html=True)
+            st.markdown(ui.tile_grid(top), unsafe_allow_html=True)
         else:
             st.info(
                 "Not enough swings on record to rank this one yet — "
@@ -200,16 +195,13 @@ def page_swing(rows):
     _coaching_note(found, chosen)
 
     st.markdown(ui.section("All measurements"), unsafe_allow_html=True)
-    st.dataframe(
-        {
-            "measurement": [s.label for s in found],
-            "this swing": [round(s.value, 3) for s in found],
-            "your median": [None if s.median is None else round(s.median, 3)
-                            for s in found],
-            "rank": [coach.rank_phrase(s) for s in found],
-        },
-        hide_index=True, width="stretch",
-    )
+    st.table({
+        "measurement": [s.label for s in found],
+        "this swing": [f"{s.value:+.3f}" for s in found],
+        "your median": ["—" if s.median is None else f"{s.median:+.3f}"
+                        for s in found],
+        "rank": [coach.rank_phrase(s) for s in found],
+    })
     st.caption(
         "Thresholds in thresholds.yaml are still uncalibrated, so no fault "
         "verdict is shown — rank within your own swings is the trustworthy "

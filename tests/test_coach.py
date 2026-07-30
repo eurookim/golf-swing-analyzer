@@ -241,3 +241,29 @@ class TestAvailability:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
 
         assert coach.available() is True
+
+
+class TestTileGrid:
+    """The design brief specifies at most ONE highlighted pill per view."""
+
+    def _standings(self, *ranks, n=17):
+        from golfswing.coach import Standing
+        return [Standing(metric=f"m{i}", label=f"Metric {i}", unit="deg",
+                         meaning="", value=1.0, rank=r, n_peers=n, median=0.0)
+                for i, r in enumerate(ranks)]
+
+    def test_only_the_single_most_extreme_tile_is_highlighted(self):
+        from golfswing import ui
+        # Two genuinely extreme values; only one may carry the accent.
+        html = ui.tile_grid(self._standings(1, 17, 9))
+        assert html.count("is-notable") == 1
+
+    def test_nothing_is_highlighted_when_the_swing_is_typical(self):
+        from golfswing import ui
+        html = ui.tile_grid(self._standings(8, 9, 10))
+        assert "is-notable" not in html
+
+    def test_every_standing_gets_a_tile(self):
+        from golfswing import ui
+        html = ui.tile_grid(self._standings(1, 17, 9))
+        assert html.count("metric-tile") == 3
