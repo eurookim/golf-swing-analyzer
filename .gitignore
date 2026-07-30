@@ -65,3 +65,6 @@ env/
 .vscode/
 .idea/
 *.swp
+
+# swing history database
+data/swings.db
