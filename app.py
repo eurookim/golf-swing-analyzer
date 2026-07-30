@@ -152,9 +152,10 @@ def page_swing(rows):
         unsafe_allow_html=True,
     )
 
-    # Portrait footage needs a narrow column; a wide one wastes space on both
-    # sides AND caps the height. 2:5 fits a 9:16 clip almost exactly.
-    video_col, stats_col = st.columns([2, 5], gap="large")
+    # Portrait footage needs a narrow column, but at 2:5 the clip was
+    # width-limited well below its 82vh height cap. 3:5 lets it reach that cap;
+    # the tiles shrink slightly to pay for it (see .metric-tile).
+    video_col, stats_col = st.columns([3, 5], gap="large")
     with video_col:
         video = find_video(chosen)
         if video:

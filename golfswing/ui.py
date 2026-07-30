@@ -100,26 +100,29 @@ CSS = """
     border-radius: 8px; border: 1px solid var(--hairline); display: block;
   }
 
-  .tile-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  /* Tiles trimmed a step so the video column can take more width. The value
+     is still by far the largest thing on the tile, which is what carries the
+     hierarchy — 34px against a 13px label reads the same as 40px against 15px. */
+  .tile-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .metric-tile {
     background: var(--raised);
     border: 1px solid var(--hairline);
     border-radius: 8px;
-    padding: 18px 20px;
+    padding: 14px 16px;
   }
   .metric-tile .label {
-    font-size: 15px; font-weight: 500; color: var(--secondary); margin-bottom: 10px;
+    font-size: 13px; font-weight: 500; color: var(--secondary); margin-bottom: 6px;
   }
   .metric-tile .value {
-    font-size: 40px; font-weight: 600; line-height: 1.05;
+    font-size: 34px; font-weight: 600; line-height: 1.05;
     font-variant-numeric: tabular-nums; margin-bottom: 8px; color: var(--ink);
   }
   .metric-tile .value .unit {
-    font-size: 15px; font-weight: 400; color: var(--muted); margin-left: 6px;
+    font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 5px;
   }
   .rank-pill {
-    display: inline-flex; padding: 4px 10px; border-radius: 999px;
-    font-size: 12px; font-weight: 600;
+    display: inline-flex; padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 600;
     background: var(--raised); border: 1px solid var(--hairline);
     color: var(--secondary);
   }
@@ -136,8 +139,8 @@ CSS = """
      badge always carries words so colour is never the only signal. */
   .verdict {
     display: inline-flex; align-items: center; gap: 5px;
-    padding: 4px 10px; border-radius: 999px;
-    font-size: 12px; font-weight: 600;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 600;
     border: 1px solid transparent;
   }
   .verdict-better { background: #e3f3ec; border-color: #b9e0d0; color: #14654b; }
@@ -147,7 +150,7 @@ CSS = """
 
   .tile-foot { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .tile-median {
-    font-size: 12px; color: var(--muted); margin-top: 10px;
+    font-size: 11px; color: var(--muted); margin-top: 8px;
     font-variant-numeric: tabular-nums;
   }
 
