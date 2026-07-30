@@ -65,36 +65,69 @@ Golf has a standard position framework. We need four frames:
 
 | Event | Name | Detection signal |
 |-------|------|------------------|
-| P1 | Address | End of the flat wrist-height plateau before the backswing rise |
-| P4 | Top of backswing | **First wrist-height local maximum, before the speed spike** |
-| P7 | Impact | **Torso-speed global maximum** (corroborated by the shoulder/hip width dip) |
-| P10 | Finish | Motion energy settles after P7 |
+| P1 | Address | Last sustained still stretch in hand speed, scanning BACK from the top |
+| P4 | Top of backswing | **First prominent peak in wrist height** — found first, independently |
+| P7 | Impact | **Wrist-height minimum**, inside a 0.15–0.50s window after P4 |
+| P10 | Finish | Upper-body motion settles after P7 |
 
-> **Signals were chosen by plotting them, not by reasoning from visibility scores.**
-> Measured on all three clips (see the exploration in Phase 2): smoothed wrist height
-> gives a textbook plateau → peak → trough → peak shape in every swing, and torso
-> speed gives a single unambiguous spike at impact. Wrist-peak to speed-spike measures
-> 0.29 / 0.25 / 0.32s across the three clips — matching the real-world ~0.25s
-> downswing, which confirms the signal tracks the actual event.
+> **Every signal here was chosen by measuring candidates against hand-verified
+> labels, and two of the choices reversed once better data arrived.**
 >
-> **This reverses the earlier Phase 0 decision to key events off the torso.** That
-> decision came from wrist visibility measuring 0.62–0.74 with 30–42% of frames below
-> 0.5, and it conflated two different things: **visibility is an occlusion-confidence
-> flag, not positional error.** MediaPipe still places an occluded wrist roughly
-> correctly; after smoothing the trajectory is the cleanest signal available.
+> **P4 is found FIRST, not derived from impact.** The top is the first *prominent*
+> peak in wrist height — the follow-through peaks higher on most swings, so a global
+> maximum finds the wrong one. Verified to match the previous method on 20/20 clips.
 >
-> The signals promoted in that decision measured worse:
-> - **Shoulder line angle is unusable** — ±180° atan2 wraparound produces a step
->   function, not a curve. Would need unwrapping and still isn't smooth.
-> - **Shoulder and hip width never reverse** — they climb monotonically to the finish,
->   so there is no peak marking the top of the backswing.
+> **P7 is the wrist-height minimum, not the torso-speed peak.** The hands bottom out
+> AT contact — geometric, not rotational, which is why it does not lag. Measured
+> against 15 labeled 120fps swings:
 >
-> Both *do* dip sharply at impact (the torso squares to the target line and
-> foreshortens from DTL), so they remain useful as an independent P7 cross-check.
+> | candidate | mean | mean_abs | max |
+> |---|---|---|---|
+> | **wrist height MIN** | **−0.27** | **0.40** | **1** |
+> | torso speed MAX | +3.40 | 3.40 | 6 |
+> | shoulder width MIN | +0.87 | 4.47 | 14 |
 >
-> **P4 is the FIRST wrist-height peak, not the global maximum.** On two of three clips
-> the follow-through peak is higher than the backswing peak. Search before the speed
-> spike.
+> This **reverses the earlier choice of shoulder-width minimum.** At 60fps it scored
+> 1.0 against wrist-height's 1.67, so it was picked — but 60fps was too coarse to
+> reveal that it is simply noisy, with a true max error of 14 frames. Torso speed is
+> consistently ~26ms late; a correction constant was calibrated and validated on a
+> train/test split before being discarded, because **a signal with no bias beats a
+> biased signal plus a correction.**
+>
+> **Impact must be bounded to a plausible downswing window (0.15–0.50s after P4).**
+> On 5 of 20 real clips the follow-through torso-speed peak exceeded the impact peak,
+> and a global search picked it — yielding 0.67–0.90s "downswings" against a measured
+> real range of 0.283–0.358s.
+
+### Measured accuracy (15 hand-verified 120fps swings)
+
+| Event | mean_abs | max | Matters because |
+|-------|---------:|----:|-----------------|
+| **P4** | **0.4** | 4 | Posture change, hip depth |
+| **P7** | **0.4** | 1 | Hip depth, knee flex — the impact-anchored metrics |
+| P1 | not measured | — | **Only tempo.** Every other use measures *at* P1, where the golfer is static. |
+| P10 | not measured | — | **Nothing.** No v1 metric uses it. |
+
+P1 and P10 were deliberately not re-verified at 120fps: labeling them costs half the
+effort and neither materially affects the output. Their last real measurement (4
+clips at 60fps) was P1 8.5 and P10 4.2 mean_abs.
+
+**Stop tuning P1 and P10.** Both are definitionally ambiguous rather than buggy:
+
+- **P1** — the takeaway begins gradually, so there is no frame where "still" becomes
+  "moving." Two human estimates of the same event came in 5 frames apart, and on one
+  clip a 15-frame window was indistinguishable by eye. Errors scatter both ways
+  (−8, −5, +10, +11), so there is no bias to correct. Metrics measured *at* P1 are
+  unaffected — the golfer is static, so any frame in that window is equivalent. Only
+  the **duration** P1→P4 suffers, i.e. tempo.
+- **P10** — errors are consistently early, which looks like a fixable bias but is a
+  definition mismatch: the detector marks *when motion stops*, a human marks *the
+  fully-wrapped finish pose*. On one clip the human label sits on a local **peak** of
+  motion. No v1 metric consumes P10.
+
+**Tempo is the one output degraded by this**, and it compounds: event errors of 3–6
+frames produced a 43% tempo error on a verified clip, because it is a ratio of two
+differences whose errors push the same way.
 
 **Every metric is measured at, or between, these frames.** Get this right and the rest is arithmetic.
 This is also the highest-risk component — budget the most time here.
@@ -127,10 +160,6 @@ neither materially affects the output:
 clip, event errors of 3–6 frames produced a 43% tempo error, because it is a ratio of
 two differences whose errors push the same way. Report it with a confidence band or
 not at all.
-
-P7 was validated on a **held-out clip** that influenced no tuning decision: error 0
-frames, alongside P4 error 0. That is real evidence the shoulder-width signal
-generalises rather than fitting the clips it was selected on.
 
 ### The P1 decision: operational definition, relative tempo
 
@@ -265,58 +294,48 @@ Angles (spine tilt, knee flex) need no normalisation at all — they are scale-f
 
 ---
 
-## Setup-consistency check (Phase 4)
+## Setup consistency — attempted and abandoned
 
-**The problem:** every DTL depth metric assumes image-horizontal *is* the
-ball-to-golfer axis. That only holds when the camera sits on the target line. Off
-the line, hip depth and head depth are measuring a skewed axis — and nothing in the
-output would say so.
+**The problem is real:** every DTL depth metric assumes image-horizontal *is* the
+ball-to-golfer axis, which only holds when the camera sits on the target line. Off
+the line, hip depth and head depth measure a skewed axis and nothing in the output
+says so.
 
-**The signal — free, no extra work:**
+**The proposed signal does not work.** The idea was:
 
 ```
 alignment = shoulder_width(P1) / torso_length(P1)
 ```
 
-The shoulder line foreshortens *most* when the camera is perfectly on the target
-line, so **lower = better aligned**. Dividing by torso length removes camera
-distance, leaving squareness.
+reasoning that the shoulder line foreshortens most when the camera is square to the
+target line. It was adopted on a 4.9x spread across four sessions, which looked like
+a tripod that had moved.
 
-Measured on four clips:
+Then it was measured **within a single session on a fixed tripod: 12.6x spread** —
+wider than across four different sessions. A tripod does not move 12x while standing
+still, so the quantity is not measuring camera geometry.
 
-| Clip | alignment | spine tilt @P1 |
-|------|----------:|---------------:|
-| 06-28 5-iron | 0.132 | 34.6° |
-| 07-10 driver | **0.365** | 33.1° |
-| 07-22 driver | **0.075** | 34.0° |
-| 07-25 driver | 0.204 | 41.3° |
+**Root cause, and it is one we have already been bitten by.** Shoulder width at
+address in DTL is ~0.02 in normalised units — near zero, because the shoulder line
+points nearly at the camera. Anything divided by a near-zero quantity is dominated
+by landmark noise. This is the *second* bug from that same fact; the first was
+normalising metrics by shoulder width, which inflated head rise to −1.29 torso
+lengths.
 
-**A 4.9× spread across four sessions** — the tripod moved a lot. Suggestive but not
-conclusive: 07-10 has both the worst alignment *and* the outlier head rise (−0.39)
-and tempo (4.48). One clip is not evidence, but it is the expected direction.
+> **Standing rule: nothing may be derived from DTL shoulder width at address.**
+> It is not a small number that needs care — it is a number whose noise exceeds its
+> signal.
 
-**Behaviour:**
+**What would actually work is unresolved.** Camera yaw relative to the target line
+is genuinely hard to recover from body pose alone. Candidates not yet tested:
 
-1. Compute `alignment` for every swing; store it alongside the metrics.
-2. Baseline = median across the golfer's history (or across the session).
-3. Flag clips deviating beyond a tolerance, and **downgrade confidence on the
-   metrics that actually depend on the axis** — not blanket-flag everything:
+- Golfer position in frame at address (catches gross setup changes, not yaw)
+- Ankle separation, which foreshortens far less than the shoulder line
+- Some geometric invariant of the stance
 
-| Metric | Affected by camera yaw? |
-|--------|-------------------------|
-| Hip depth, head depth | ✅ **Strongly** — measured along the assumed ball axis |
-| Spine tilt, posture change, knee angle | ⚠️ Moderately — measured in the image plane |
-| Head rise | ➖ Barely — vertical stays vertical under yaw |
-| Tempo | ❌ Not at all — timing only |
-
-4. Surface it as *"camera appears further off the target line than usual; treat
-   depth metrics with caution"* — never as a silent adjustment.
-
-This is design principle 5 (honest uncertainty) applied to **setup** rather than
-tracking, and it is the only defence against the confound that makes four clips from
-four sessions uninterpretable. It also gives immediate feedback at capture time:
-a session whose alignment differs from baseline can be re-shot while you are still
-standing there.
+Until one of those is measured and shown to be stable within a session and to vary
+across sessions, **there is no setup-consistency check.** The honest position is that
+setup variation is a known, unmeasured confound.
 
 ---
 
