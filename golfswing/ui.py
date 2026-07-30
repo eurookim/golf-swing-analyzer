@@ -28,7 +28,14 @@ CSS = f"""
   /* Streamlit's default top padding wastes most of a laptop's first screen. */
   .block-container {{ padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1400px; }}
   #MainMenu, footer, header [data-testid="stToolbar"] {{ visibility: hidden; }}
-  header {{ height: 0 !important; }}
+
+  /* Do NOT collapse the header. Streamlit puts the re-open control for a
+     collapsed sidebar inside it, so `header {{ height: 0 }}` leaves no way back
+     once you hide the sidebar. Make it invisible but keep its box. */
+  header {{ background: transparent !important; }}
+  [data-testid="stExpandSidebarButton"] {{
+      visibility: visible !important; opacity: 1 !important; z-index: 1000;
+  }}
 
   /* Phone footage is portrait 1080x1920. Width is constrained by a nested
      Streamlit column rather than CSS — targeting Streamlit's internal test-ids
