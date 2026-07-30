@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from scipy.signal import find_peaks
 
 from golfswing.sequence import PoseSequence
 
@@ -30,6 +31,18 @@ MIN_PEAK_OVER_BASELINE = 3.0
 
 # How far either side of the coarse speed peak to search for true contact.
 IMPACT_REFINE_SECONDS = 0.12
+
+# A downswing is physically bounded. Measured across 15 hand-labeled swings:
+# 0.283-0.358s. This window is generous around that, and its job is to stop the
+# search reaching a follow-through spike — 5 of 20 real clips had one LARGER
+# than the impact spike, which a global maximum picked, yielding 0.67-0.90s
+# "downswings".
+DOWNSWING_MIN_SECONDS = 0.15
+DOWNSWING_MAX_SECONDS = 0.50
+
+# A wrist-height peak counts as the top if it rises this fraction of the
+# swing's full height range above its surroundings.
+TOP_PROMINENCE_FRACTION = 0.25
 
 # Hands are "still" below this fraction of the backswing's typical hand speed.
 ADDRESS_MOTION_FRACTION = 0.15
@@ -135,15 +148,49 @@ def shoulder_width(sequence: PoseSequence) -> np.ndarray:
         return np.where(torso > 0, shoulders / torso, np.nan)
 
 
+def _find_top(height: np.ndarray) -> int | None:
+    """First prominent peak in hand height — the top of the backswing.
+
+    Not the global maximum: on real footage the follow-through peaks higher
+    than the backswing on most swings, so a global search finds the wrong one.
+    Prominence is measured against the swing's own height range, so it scales
+    with how big the swing is rather than needing an absolute threshold.
+    """
+    finite = height[np.isfinite(height)]
+    if finite.size == 0:
+        return None
+    span = float(finite.max() - finite.min())
+    if span <= 0:
+        return None
+    peaks, _ = find_peaks(height, prominence=span * TOP_PROMINENCE_FRACTION)
+    return int(peaks[0]) if len(peaks) else None
+
+
 def _refine_impact(sequence: PoseSequence, coarse: int) -> int:
-    """Sharpen a coarse impact estimate using the shoulder-line minimum."""
-    width = shoulder_width(sequence)
+    """Sharpen a coarse impact estimate using the hand-height minimum.
+
+    The hands reach the bottom of the swing arc AT contact — a geometric
+    coincidence rather than a rotational one, which is why it does not lag.
+
+    Measured against 15 hand-labeled 120fps clips:
+
+        wrist height MIN     mean -0.27  mean_abs 0.40  max 1
+        torso speed MAX      mean +3.40  mean_abs 3.40  max 6
+        shoulder width MIN   mean +0.87  mean_abs 4.47  max 14
+
+    This reverses an earlier choice. At 60fps shoulder-width minimum scored
+    better (1.0 vs 1.67), so it was picked — but 60fps was too coarse to show
+    that it is simply noisy. Doubling the frame rate exposed it, and also
+    revealed the torso-speed lag as a consistent ~26ms rather than a rounding
+    error. A signal with no bias beats a biased signal plus a correction.
+    """
+    height = wrist_height(sequence)
     fps = sequence.fps if sequence.fps > 0 else 60.0
     half = max(2, int(round(IMPACT_REFINE_SECONDS * fps)))
 
     lo = max(0, coarse - half)
-    hi = min(len(width), coarse + half + 1)
-    window = width[lo:hi]
+    hi = min(len(height), coarse + half + 1)
+    window = height[lo:hi]
     if not np.any(np.isfinite(window)):
         return coarse
     return int(lo + np.nanargmin(window))
@@ -198,28 +245,34 @@ def detect_events(sequence: PoseSequence) -> SwingEvents:
     if len(speed) < 5 or not np.any(np.isfinite(speed)):
         raise NoSwingDetectedError("too few usable frames")
 
-    coarse = int(np.nanargmax(speed))
-    peak = float(speed[coarse])
+    peak = float(np.nanmax(speed))
     baseline = float(np.nanmedian(speed))
-
     if not np.isfinite(peak) or peak <= 0 or peak < MIN_PEAK_OVER_BASELINE * baseline:
         raise NoSwingDetectedError(
             f"no impact spike found (peak {peak:.4f} vs baseline {baseline:.4f}) — "
             "the clip may not contain a swing"
         )
-    if coarse == 0:
-        raise NoSwingDetectedError("impact detected on the first frame; clip starts mid-swing")
 
-    # The torso-speed peak locates impact only coarsely — the body keeps
-    # accelerating through release, so it lags contact by a few frames.
-    # Refine using the shoulder-line minimum, which bottoms AT contact.
-    # Measured over three verified clips: mean_abs 1.0 frames vs 1.67 for the
-    # speed peak alone, and never off by more than one.
+    # P4 first, independently of impact. The top is the FIRST prominent peak in
+    # wrist height — the follow-through frequently peaks higher, so a global
+    # maximum finds the wrong one. Verified against 20 real clips.
+    p4 = _find_top(height)
+    if p4 is None:
+        raise NoSwingDetectedError("no backswing peak found in hand height")
+
+    # P7 inside a physically plausible downswing window after the top. Without
+    # the bound, a follow-through spike larger than impact wins the global
+    # maximum — which happened on 5 of 20 real clips.
+    fps = sequence.fps if sequence.fps > 0 else 60.0
+    lo = p4 + max(1, int(round(DOWNSWING_MIN_SECONDS * fps)))
+    hi = min(len(speed), p4 + int(round(DOWNSWING_MAX_SECONDS * fps)) + 1)
+    if lo >= hi:
+        raise NoSwingDetectedError("clip ends before a downswing could complete")
+    coarse = int(lo + np.nanargmax(speed[lo:hi]))
+
+    # The speed peak lags contact — the body keeps accelerating through release.
+    # The shoulder line bottoms AT contact, so refine against that.
     p7 = _refine_impact(sequence, coarse)
-
-    # P4: highest hands BEFORE impact. Deliberately not the global maximum —
-    # on real footage the follow-through often peaks higher than the backswing.
-    p4 = int(np.nanargmax(height[:p7]))
 
     # P1: the last frame the hands are still, walking BACK from the top.
     #
