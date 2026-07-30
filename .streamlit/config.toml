@@ -1,0 +1,15 @@
+# Validated palette (dataviz light surface): #2a78d6 / #eb6834 on #fcfcfb.
+# Set here rather than in CSS so Streamlit's own widgets match the charts —
+# otherwise the built-in controls keep their default red/grey and clash.
+[theme]
+base = "light"
+primaryColor = "#2a78d6"
+backgroundColor = "#fcfcfb"
+secondaryBackgroundColor = "#f2f1ec"
+textColor = "#0b0b0b"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

@@ -99,7 +99,13 @@ def standings(rows: list[dict], clip: str) -> list[Standing]:
     if subject is None:
         raise KeyError(f"no swing named {clip!r}")
 
-    baseline = [r for r in rows if r["fault_tag"] is None]
+    # Same club only. Tempo and hip depth genuinely differ between a driver and
+    # a wedge, so a mixed baseline ranks a swing against a different motion —
+    # the project's "club is metadata, never inferred" rule applied to ranking.
+    baseline = [
+        r for r in rows
+        if r["fault_tag"] is None and r.get("club") == subject.get("club")
+    ]
 
     found = []
     for name, meta in COACHING_METRICS.items():
@@ -124,6 +130,46 @@ def standings(rows: list[dict], clip: str) -> list[Standing]:
             value=float(value), rank=rank, n_peers=compared, median=median,
         ))
     return found
+
+
+def extremity(standing: Standing) -> float:
+    """How unusual this value is for this golfer: 0 at their median, 1 at an end.
+
+    Rank position rather than the raw value, because the metrics are in
+    different units and no threshold exists to normalise them against.
+    """
+    if standing.rank is None or standing.n_peers < 2:
+        return 0.0
+    middle = (standing.n_peers + 1) / 2
+    return abs(standing.rank - middle) / (middle - 1) if middle > 1 else 0.0
+
+
+def rank_phrase(standing: Standing) -> str:
+    """Plain-English position, e.g. 'highest of 17'."""
+    if standing.rank is None:
+        return f"too few swings ({standing.n_peers})"
+    if standing.rank == 1:
+        return f"highest of {standing.n_peers}"
+    if standing.rank == standing.n_peers:
+        return f"lowest of {standing.n_peers}"
+
+    # 11/12/13 are "th" despite ending in 1/2/3; otherwise the last digit decides.
+    if standing.rank % 100 in (11, 12, 13):
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(standing.rank % 10, "th")
+    return f"{standing.rank}{suffix} of {standing.n_peers}"
+
+
+def standouts(found: list[Standing], count: int = 3) -> list[Standing]:
+    """The few measurements worth showing large.
+
+    Implements the project's "prioritise, don't enumerate" principle: a swing
+    sitting at its own median is not news. Unranked metrics are never promoted —
+    without enough peers there is no evidence they stand out at all.
+    """
+    ranked = [s for s in found if s.rank is not None]
+    return sorted(ranked, key=extremity, reverse=True)[:count]
 
 
 SYSTEM_PROMPT = """\

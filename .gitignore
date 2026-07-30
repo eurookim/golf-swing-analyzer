@@ -71,3 +71,6 @@ data/swings.db
 
 # app runtime log
 data/app.log
+
+# cached browser-playable clips (regenerated from data/raw)
+data/previews/

@@ -87,6 +87,30 @@ class TestStandings:
 
         assert hip.rank == 1 and hip.n_peers == 6
 
+    def test_only_the_same_club_is_compared(self):
+        """Tempo and hip depth differ by club, so a mixed ranking is meaningless.
+
+        The sidebar's "all" filter passes every club through; the comparison has
+        to narrow it or a 7-iron gets ranked against driver swings.
+        """
+        rows = [_row(f"i{i}", club="7iron", tempo_ratio=3.0) for i in range(6)]
+        rows += [_row(f"d{i}", club="driver", tempo_ratio=99.0) for i in range(6)]
+
+        tempo = next(s for s in coach.standings(rows, "i0")
+                     if s.metric == "tempo_ratio")
+
+        assert tempo.n_peers == 6, "driver swings must not enter the baseline"
+        assert tempo.median == pytest.approx(3.0)
+
+    def test_a_clip_without_a_club_compares_against_other_unattributed_clips(self):
+        rows = [_row(f"u{i}", club=None, tempo_ratio=2.0) for i in range(6)]
+        rows += [_row(f"i{i}", club="7iron", tempo_ratio=9.0) for i in range(6)]
+
+        tempo = next(s for s in coach.standings(rows, "u0")
+                     if s.metric == "tempo_ratio")
+
+        assert tempo.n_peers == 6
+
     def test_too_few_peers_means_no_ranking(self):
         """Three swings cannot establish a personal range — say so, don't imply it."""
         rows = [_row(f"c{i}", hip_depth_change=0.1 * i) for i in range(3)]
@@ -107,6 +131,76 @@ class TestStandings:
     def test_unknown_clip_raises(self):
         with pytest.raises(KeyError):
             coach.standings([_row("a")], "nope")
+
+
+class TestStandouts:
+    def _standings(self, **ranks):
+        return [
+            coach.Standing(metric=m, label=m, unit="", meaning="", value=1.0,
+                           rank=r, n_peers=17, median=0.0)
+            for m, r in ranks.items()
+        ]
+
+    def test_picks_the_most_extreme_ranks(self):
+        """A swing sitting at its own median is not news; an extreme is."""
+        found = self._standings(typical=9, highest=1, lowest=17, near=8)
+
+        picked = [s.metric for s in coach.standouts(found, count=2)]
+
+        assert set(picked) == {"highest", "lowest"}
+
+    def test_orders_most_extreme_first(self):
+        found = self._standings(middling=6, extreme=17)
+
+        assert [s.metric for s in coach.standouts(found, count=2)] == \
+            ["extreme", "middling"]
+
+    def test_unranked_metrics_are_never_promoted(self):
+        """Without enough peers there is no evidence it stands out."""
+        found = self._standings(ranked=1)
+        found.append(coach.Standing(metric="unranked", label="", unit="",
+                                    meaning="", value=1.0, rank=None,
+                                    n_peers=3, median=None))
+
+        picked = [s.metric for s in coach.standouts(found, count=3)]
+
+        assert picked == ["ranked"]
+
+    def test_returns_fewer_when_there_is_less_to_show(self):
+        assert len(coach.standouts(self._standings(only=1), count=3)) == 1
+
+    def test_no_ranked_metrics_yields_nothing(self):
+        found = [coach.Standing(metric="a", label="", unit="", meaning="",
+                                value=1.0, rank=None, n_peers=2, median=None)]
+        assert coach.standouts(found, count=3) == []
+
+
+class TestRankPhrase:
+    def _standing(self, rank, n=17):
+        return coach.Standing(metric="m", label="m", unit="", meaning="",
+                              value=1.0, rank=rank, n_peers=n, median=0.0)
+
+    def test_top_rank_reads_as_highest(self):
+        assert coach.rank_phrase(self._standing(1)) == "highest of 17"
+
+    def test_bottom_rank_reads_as_lowest(self):
+        assert coach.rank_phrase(self._standing(17)) == "lowest of 17"
+
+    def test_middle_ranks_are_numbered(self):
+        assert coach.rank_phrase(self._standing(5)) == "5th of 17"
+
+    def test_ordinals_are_correct_past_twenty(self):
+        assert coach.rank_phrase(self._standing(21, n=40)) == "21st of 40"
+        assert coach.rank_phrase(self._standing(22, n=40)) == "22nd of 40"
+
+    def test_the_teens_are_all_th(self):
+        for rank in (11, 12, 13):
+            assert coach.rank_phrase(self._standing(rank, n=40)) \
+                == f"{rank}th of 40"
+
+    def test_unranked_says_why(self):
+        phrase = coach.rank_phrase(self._standing(None, n=3))
+        assert "too few" in phrase.lower()
 
 
 class TestPrompt:
