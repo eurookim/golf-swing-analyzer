@@ -146,6 +146,10 @@ CSS = """
                     color: var(--secondary); }
 
   .tile-foot { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .tile-median {
+    font-size: 12px; color: var(--muted); margin-top: 10px;
+    font-variant-numeric: tabular-nums;
+  }
 
   .summary-line {
     font-size: 15px; line-height: 1.6; color: var(--ink);
@@ -223,6 +227,10 @@ def tile(standing: Standing, notable: bool = False) -> str:
     if verdict:
         badge = (f'<span class="verdict verdict-{verdict}">'
                  f'{VERDICT_WORDS[verdict]}</span>')
+    median = ""
+    if standing.median is not None:
+        median = (f'<div class="tile-median">your usual: '
+                  f'{standing.median:+.2f}</div>')
     return (
         f'<div class="metric-tile">'
         f'  <div class="label">{standing.short or standing.label.split(",")[0]}</div>'
@@ -231,6 +239,7 @@ def tile(standing: Standing, notable: bool = False) -> str:
         f'  <div class="tile-foot">'
         f'    {badge}<span class="{pill}">{rank_phrase(standing)}</span>'
         f'  </div>'
+        f'  {median}'
         f'</div>'
     )
 
@@ -270,19 +279,25 @@ def guidance() -> str:
 
 
 def tile_grid(found: list[Standing]) -> str:
-    """All the standout tiles, with **at most one** highlighted.
+    """Every measurement as a tile, most unusual first, at most one highlighted.
 
-    The design brief calls for a single accent per view, which is a stronger
-    rule than "highlight everything past the threshold": two competing
-    highlights give the eye nowhere to land. Only the most extreme metric gets
-    it, and only if it clears the bar at all — a typical swing highlights
-    nothing.
+    All of them are shown rather than a selected few. With six metrics there is
+    nothing meaningful to prioritise away, and showing a subset forced a header
+    explaining the selection — a line that never changed and overclaimed
+    ("furthest from your usual" sitting above three middling ranks). Ordering
+    conveys the same thing without asserting anything, and the per-tile rank
+    and verdict say precisely how unusual each one actually is.
+
+    The single accent comes from the design brief: two competing highlights
+    give the eye nowhere to land. A typical swing highlights nothing at all.
     """
     if not found:
         return ""
-    leader = max(range(len(found)), key=lambda i: extremity(found[i]))
-    highlight = leader if extremity(found[leader]) >= NOTABLE_EXTREMITY else None
-    tiles = "".join(tile(s, notable=(i == highlight)) for i, s in enumerate(found))
+    ordered = sorted(found, key=extremity, reverse=True)
+    leads = extremity(ordered[0]) >= NOTABLE_EXTREMITY
+    tiles = "".join(
+        tile(s, notable=(i == 0 and leads)) for i, s in enumerate(ordered)
+    )
     return f'<div class="tile-grid">{tiles}</div>'
 
 

@@ -141,8 +141,6 @@ def page_swing(rows):
     chosen = _swing_picker(clips)
     row = next(r for r in rows if r["clip"] == chosen)
     found = coach.standings(rows, chosen)
-    # Four fills the 2x2 grid exactly; three left a visible empty slot.
-    top = coach.standouts(found, count=4)
 
     st.markdown(
         ui.heading(
@@ -177,21 +175,14 @@ def page_swing(rows):
 
     with stats_col:
         st.markdown(ui.summary(found), unsafe_allow_html=True)
-        if top:
-            # A short structural label, not a repeated sentence. The caveat it
-            # used to carry ("compared against your own swings, not a
-            # threshold") is already in the summary line directly above, so
-            # saying it twice was noise on every single swing.
-            notable = [s for s in top if coach.extremity(s) >= ui.NOTABLE_EXTREMITY]
-            st.markdown(
-                ui.section("Furthest from your usual" if notable
-                           else "Closest to the edges of your usual range"),
-                unsafe_allow_html=True)
-            st.markdown(ui.tile_grid(top), unsafe_allow_html=True)
-        else:
+        # Every measurement, ordered most-unusual first. No section header:
+        # showing a subset used to need one explaining the selection, and that
+        # line never changed and overclaimed. Ordering says it instead.
+        st.markdown(ui.tile_grid(found), unsafe_allow_html=True)
+        if not any(s.rank for s in found):
             st.info(
                 "Not enough swings on record to rank this one yet — "
-                f"{coach.MIN_PEERS_FOR_RANKING} are needed."
+                f"{coach.MIN_PEERS_FOR_RANKING} of the same club are needed."
             )
 
     sheet = Path("outputs") / f"{chosen}_keyframes.jpg"
@@ -202,20 +193,9 @@ def page_swing(rows):
     st.markdown(ui.section("Coaching note"), unsafe_allow_html=True)
     _coaching_note(found, chosen)
 
-    st.markdown(ui.section("All measurements"), unsafe_allow_html=True)
-    st.table({
-        "measurement": [s.label for s in found],
-        "this swing": [f"{s.value:+.3f}" for s in found],
-        "your median": ["—" if s.median is None else f"{s.median:+.3f}"
-                        for s in found],
-        "rank": [coach.rank_phrase(s) for s in found],
-    })
-    st.caption(
-        "Thresholds in thresholds.yaml are still uncalibrated, so no fault "
-        "verdict is shown — rank within your own swings is the trustworthy "
-        "signal until a session of genuinely exaggerated faults exists."
-    )
-
+    # The measurements table used to live here. Every column it carried —
+    # value, your median, rank — is now on the tiles themselves, so it was the
+    # same six rows printed twice on one page.
     with st.expander("What do these measurements mean?"):
         st.markdown(ui.guidance(), unsafe_allow_html=True)
         st.caption(
