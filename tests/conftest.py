@@ -47,3 +47,16 @@ def rotated_clip(tmp_path_factory):
         check=True,
     )
     return out
+
+
+@pytest.fixture(scope="session")
+def high_fps_clip(tmp_path_factory):
+    """120fps clip — exposes timestamp collisions that 60fps does not.
+
+    At 8.33ms spacing, any decoder jitter at the head of the file makes two
+    frames round to the same integer millisecond.
+    """
+    if FFMPEG is None:
+        pytest.skip("ffmpeg not installed")
+    return _synth(tmp_path_factory.mktemp("clips_120") / "fast.mp4",
+                  seconds=0.5, fps=120)

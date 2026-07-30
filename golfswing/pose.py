@@ -33,6 +33,25 @@ def ensure_model(path: Path = DEFAULT_MODEL) -> Path:
     return path
 
 
+def tracking_timestamps_ms(n_frames: int, fps: float) -> list[int]:
+    """Strictly increasing millisecond stamps for MediaPipe's VIDEO mode.
+
+    Derived from the frame index, NOT from real presentation times. MediaPipe
+    requires strict monotonicity, and real times cannot guarantee it: at 120fps
+    frames sit 8.33ms apart, and a real clip's decoder emitted its first two
+    frames only 0.42ms apart — both rounded to 0 and extraction raised
+    ``Input timestamp must be monotonically increasing``. At 60fps the same
+    artifact happened to fit inside the wider spacing.
+
+    This clock is internal to pose tracking. The timestamps stored on the
+    sequence for metrics remain the real ones.
+    """
+    interval = 1000.0 / fps if fps > 0 else 1000.0 / 60.0
+    # Enforce at least 1ms per frame so no two stamps can collide.
+    interval = max(interval, 1.0)
+    return [int(round(i * interval)) for i in range(n_frames)]
+
+
 def extract_sequence(
     video_path: Path | str,
     model_path: Path | str = DEFAULT_MODEL,
@@ -59,11 +78,13 @@ def extract_sequence(
         num_poses=1,
     )
 
+    stamps = tracking_timestamps_ms(len(frames), info.fps)
+
     with mp_vision.PoseLandmarker.create_from_options(options) as landmarker:
-        for i, (frame, t) in enumerate(zip(frames, times)):
+        for i, frame in enumerate(frames):
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-            result = landmarker.detect_for_video(image, int(t * 1000))
+            result = landmarker.detect_for_video(image, stamps[i])
             if not result.pose_landmarks:
                 continue
             for j, lm in enumerate(result.pose_landmarks[0]):

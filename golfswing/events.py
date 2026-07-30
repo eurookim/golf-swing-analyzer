@@ -73,6 +73,25 @@ def wrist_height(sequence: PoseSequence) -> np.ndarray:
     return 1.0 - np.nanmean(y, axis=1)
 
 
+def _safe_intervals(times: np.ndarray) -> np.ndarray:
+    """Per-frame time deltas, floored so a decoder artifact cannot explode them.
+
+    Decoders emit a near-zero interval at the head of a file — measured at
+    0.417ms against a median of 8.333ms on real 120fps clips, 20x too small.
+    Dividing a normal displacement by it fabricates a speed spike larger than
+    impact, which made two clips fail outright with "impact detected on the
+    first frame."
+
+    Floored at half the median: wide enough to pass genuine variation, tight
+    enough to kill an order-of-magnitude artifact.
+    """
+    dt = np.gradient(times)
+    median = float(np.median(dt))
+    if not np.isfinite(median) or median <= 0:
+        return np.where(dt > 0, dt, 1.0)
+    return np.maximum(dt, median * 0.5)
+
+
 def _mean_speed(sequence: PoseSequence, landmark_indices) -> np.ndarray:
     """Mean speed of the given landmarks, in normalised units per second.
 
@@ -80,9 +99,8 @@ def _mean_speed(sequence: PoseSequence, landmark_indices) -> np.ndarray:
     same thing at 60fps and 240fps.
     """
     xy = sequence.landmarks[:, list(landmark_indices), :2]
-    dt = np.gradient(sequence.times)
     per_frame = np.linalg.norm(np.gradient(xy, axis=0), axis=-1)
-    return np.nanmean(per_frame, axis=1) / dt
+    return np.nanmean(per_frame, axis=1) / _safe_intervals(sequence.times)
 
 
 def torso_speed(sequence: PoseSequence) -> np.ndarray:

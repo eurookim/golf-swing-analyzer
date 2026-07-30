@@ -70,3 +70,39 @@ class TestAgainstRealFootage:
         seq = pose.extract_sequence(REAL_CLIPS[0])
         torso = seq.landmarks[:, [11, 12, 23, 24], VISIBILITY]
         assert np.nanmean(torso) > 0.9
+
+
+class TestTrackingTimestamps:
+    """MediaPipe VIDEO mode requires strictly increasing integer milliseconds.
+
+    Real presentation times cannot supply that: at 120fps frames are 8.33ms
+    apart, and the decoder emitted the first two frames of a real clip only
+    0.42ms apart, so both rounded to 0 and extraction raised. The tracking
+    clock is therefore derived from the frame index — it only has to be
+    monotonic, while the timestamps stored for metrics stay real.
+    """
+
+    def test_strictly_increasing_at_every_frame_rate(self):
+        for fps in (24.0, 30.0, 59.94, 60.0, 120.0, 240.0):
+            stamps = pose.tracking_timestamps_ms(200, fps)
+            assert all(b > a for a, b in zip(stamps, stamps[1:])), f"collided at {fps}fps"
+
+    def test_spacing_reflects_the_real_frame_rate(self):
+        stamps = pose.tracking_timestamps_ms(100, 120.0)
+        assert (stamps[-1] - stamps[0]) / 99 == pytest.approx(1000 / 120, abs=0.5)
+
+    def test_survives_a_degenerate_frame_rate(self):
+        stamps = pose.tracking_timestamps_ms(10, 0.0)
+        assert all(b > a for a, b in zip(stamps, stamps[1:]))
+
+
+@requires_model
+class TestHighFrameRateExtraction:
+    def test_120fps_clip_extracts_without_raising(self, high_fps_clip):
+        seq = pose.extract_sequence(high_fps_clip)
+        assert seq.n_frames > 0
+
+    def test_real_timestamps_are_preserved_not_replaced(self, high_fps_clip):
+        """The tracking clock is internal; stored times must stay real."""
+        seq = pose.extract_sequence(high_fps_clip)
+        assert np.diff(seq.times).mean() == pytest.approx(1 / 120, abs=1e-3)

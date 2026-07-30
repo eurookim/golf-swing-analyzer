@@ -129,6 +129,30 @@ class TestTorsoSpeed:
         seq = _sequence(_synthetic_swing(p7=80))
         assert np.argmax(events.torso_speed(seq)) > 80
 
+    def test_a_degenerate_first_interval_does_not_fake_a_spike(self):
+        """Decoders emit a near-zero first interval; dividing by it explodes.
+
+        Measured on real 120fps clips: the first dt came back as 0.417ms against
+        a median of 8.333ms — 20x too small — inflating frame 0's speed past the
+        real impact, so two clips failed with 'impact detected on the first
+        frame'.
+        """
+        # Displacements taken from a real clip: near-static at address, ~11x
+        # larger at impact. Uniform motion would be a useless fixture here —
+        # every frame would share the same speed and argmax would be 0 anyway.
+        displacement = np.full(60, 0.00087)
+        displacement[28:33] = 0.0095                          # impact burst
+
+        lm = _still(60)
+        lm[:, TORSO, 0] = np.cumsum(displacement)[:, None]
+        times = np.arange(60) / 120.0
+        times[1] = 0.000417                                   # the artifact
+
+        speed = events.torso_speed(_sequence(lm, times=times))
+
+        assert np.nanargmax(speed) != 0, "frame 0 spike from a degenerate dt"
+        assert 27 <= np.nanargmax(speed) <= 33, "should peak at the real burst"
+
     def test_uses_real_timestamps_not_frame_index(self):
         """Same motion over twice the elapsed time must read as half the speed."""
         lm = _still(20)
