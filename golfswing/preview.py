@@ -14,13 +14,40 @@ video.
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 from pathlib import Path
 
 CACHE_DIR = Path("data/previews")
 
+# A .app launched from Finder inherits a minimal PATH — notably WITHOUT
+# /opt/homebrew/bin — so shutil.which("ffmpeg") finds nothing even when ffmpeg
+# is installed and works fine in a terminal. Symptom: previews generate when
+# you run streamlit by hand, and fail with "No such file or directory:
+# 'ffmpeg'" for every clip when you double-click the app.
+KNOWN_LOCATIONS = (
+    "/opt/homebrew/bin/ffmpeg",   # Apple silicon Homebrew
+    "/usr/local/bin/ffmpeg",      # Intel Homebrew
+    "/opt/local/bin/ffmpeg",      # MacPorts
+)
+
 # Container brands browsers will demux. Anything else needs a remux.
 PLAYABLE_BRANDS = {"isom", "mp42", "avc1", "iso2", "M4V", "dash"}
+
+
+def ffmpeg_path() -> str:
+    """Absolute path to ffmpeg, searched beyond the inherited PATH."""
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    for candidate in KNOWN_LOCATIONS:
+        if os.access(candidate, os.X_OK):
+            return candidate
+    raise FileNotFoundError(
+        "ffmpeg was not found. It is needed to convert iPhone clips into a "
+        "format browsers can play.\n\nInstall it with:  brew install ffmpeg"
+    )
 
 
 def brand(path: Path) -> str | None:
@@ -65,7 +92,7 @@ def playable(source: Path, cache_dir: Path | str = CACHE_DIR) -> Path:
         old.unlink(missing_ok=True)
 
     subprocess.run(
-        ["ffmpeg", "-y", "-v", "error", "-i", str(source),
+        [ffmpeg_path(), "-y", "-v", "error", "-i", str(source),
          "-c", "copy",                  # no re-encode: same streams, new box layout
          "-movflags", "+faststart",     # moov atom first, so playback starts early
          str(target)],

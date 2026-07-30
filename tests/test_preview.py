@@ -77,3 +77,43 @@ class TestPlayableCopy:
     def test_a_missing_source_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             preview.playable(tmp_path / "nope.mov", cache_dir=tmp_path / "c")
+
+
+class TestFfmpegLocation:
+    """A Finder-launched .app gets a minimal PATH without Homebrew on it.
+
+    This is why previews worked from a terminal but failed in the real app:
+    ffmpeg lives in /opt/homebrew/bin, which the app never sees.
+    """
+
+    def test_prefers_ffmpeg_on_the_path(self, monkeypatch):
+        monkeypatch.setattr(preview.shutil, "which", lambda _: "/usr/bin/ffmpeg")
+        assert preview.ffmpeg_path() == "/usr/bin/ffmpeg"
+
+    def test_falls_back_to_known_install_locations(self, tmp_path, monkeypatch):
+        stand_in = tmp_path / "ffmpeg"
+        stand_in.write_text("#!/bin/sh\n")
+        stand_in.chmod(0o755)
+
+        monkeypatch.setattr(preview.shutil, "which", lambda _: None)
+        monkeypatch.setattr(preview, "KNOWN_LOCATIONS", (str(stand_in),))
+
+        assert preview.ffmpeg_path() == str(stand_in)
+
+    def test_raises_an_actionable_error_when_absent(self, monkeypatch):
+        monkeypatch.setattr(preview.shutil, "which", lambda _: None)
+        monkeypatch.setattr(preview, "KNOWN_LOCATIONS", ())
+
+        with pytest.raises(FileNotFoundError, match="brew install ffmpeg"):
+            preview.ffmpeg_path()
+
+    def test_a_non_executable_candidate_is_skipped(self, tmp_path, monkeypatch):
+        dud = tmp_path / "ffmpeg"
+        dud.write_text("not executable")
+        dud.chmod(0o644)
+
+        monkeypatch.setattr(preview.shutil, "which", lambda _: None)
+        monkeypatch.setattr(preview, "KNOWN_LOCATIONS", (str(dud),))
+
+        with pytest.raises(FileNotFoundError):
+            preview.ffmpeg_path()

@@ -41,6 +41,11 @@ cat > "$APP/Contents/MacOS/launch" <<LAUNCH
 PROJECT="$PROJECT"
 cd "\$PROJECT" || exit 1
 
+# A Finder-launched app inherits a minimal PATH without Homebrew, so ffmpeg
+# (used to make clips browser-playable) would not be found. preview.py also
+# resolves it by absolute path; this covers any other subprocess.
+export PATH="/opt/homebrew/bin:/usr/local/bin:/opt/local/bin:\$PATH"
+
 exec "\$PROJECT/.venv/bin/python" "\$PROJECT/desktop.py"
 LAUNCH
 
