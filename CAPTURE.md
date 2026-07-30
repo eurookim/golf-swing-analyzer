@@ -8,6 +8,18 @@ bottom if you want them.
 
 ---
 
+## If you already shot a normal-swing baseline
+
+**You do not need to repeat it.** The 2026-07-29 session banked 14 verified
+normal swings, which is the expensive half. What is still missing is fault clips
+that are genuinely exaggerated.
+
+A follow-up session is short — **~10 clips, two per fault**, plus a couple of
+normals to confirm the setup matches. Read the exaggeration test below first;
+it is the reason a second session is needed at all.
+
+---
+
 ## 1. Camera settings
 
 | Setting | Use | Why |
@@ -62,9 +74,31 @@ Your ordinary swing. **7-iron, every one.** Don't try to swing well; swing
 | 14 | **Knee straightening** | Snap your trail leg straight through impact |
 | 15 | **Quick tempo** | Rush the backswing — snatch it away |
 
-**Exaggerate them.** Do not do a subtle version. A clearly-wrong swing is a
-known-positive; a subtle one tells us nothing, because we cannot tell it apart
-from your normal swing — which is precisely the question.
+### ⚠️ The exaggeration test — this is where the first attempt failed
+
+> **If you still hit the ball decently, the fault wasn't big enough.**
+
+Apply that standing there, shot by shot. A real early extension leaves you nearly
+upright at impact, topping or thinning it. A real loss of posture produces a
+genuinely bad strike.
+
+**The fault clips should not look like your swing with a flaw. They should look
+like a different, obviously broken swing.** You are not demonstrating a tendency
+— you are marking the far end of the scale so a threshold has somewhere to sit.
+
+This is not a stylistic preference. On the first 20-clip session the deliberate
+faults measured *inside* the normal range on every metric and every interval
+tried, so 4 of 5 rules could not be calibrated at all:
+
+| Rule | Normal swings | Deliberate fault |
+|------|---------------|------------------|
+| loss_of_posture | −2.3 … 1.11° | **0.54°** (inside) |
+| early_extension | 0.162 … 0.276 | **0.148** (below all 14 normals) |
+| quick_tempo | 2.16 … 6.29 | **2.47** (inside) |
+
+A subtle fault clip is worse than no fault clip: it costs a swing and yields
+nothing, because it cannot be told apart from a normal swing — which is exactly
+the question being asked.
 
 ### Order matters
 
