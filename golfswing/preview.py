@@ -50,6 +50,29 @@ def ffmpeg_path() -> str:
     )
 
 
+def dimensions(path: Path) -> tuple[int, int] | None:
+    """(width, height) of the video stream, or None if unreadable.
+
+    The browser does not know a video's shape until it loads, so a layout that
+    depends on aspect ratio cannot be right until then. Reading it up front
+    lets the page reserve the correct box immediately.
+    """
+    probe = ffmpeg_path().replace("ffmpeg", "ffprobe")
+    try:
+        result = subprocess.run(
+            [probe, "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height",
+             "-of", "csv=p=0:s=x", str(path)],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    parts = result.stdout.strip().split("x")
+    if len(parts) != 2 or not all(p.isdigit() for p in parts):
+        return None
+    return int(parts[0]), int(parts[1])
+
+
 def brand(path: Path) -> str | None:
     """The container's major brand, from bytes 8-12 of the ftyp box."""
     try:

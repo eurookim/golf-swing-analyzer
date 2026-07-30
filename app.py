@@ -141,7 +141,8 @@ def page_swing(rows):
     chosen = _swing_picker(clips)
     row = next(r for r in rows if r["clip"] == chosen)
     found = coach.standings(rows, chosen)
-    top = coach.standouts(found, count=3)
+    # Four fills the 2x2 grid exactly; three left a visible empty slot.
+    top = coach.standouts(found, count=4)
 
     st.markdown(
         ui.heading(
@@ -153,17 +154,24 @@ def page_swing(rows):
         unsafe_allow_html=True,
     )
 
-    video_col, stats_col = st.columns([5, 6], gap="large")
+    # Portrait footage needs a narrow column; a wide one wastes space on both
+    # sides AND caps the height. 2:5 fits a 9:16 clip almost exactly.
+    video_col, stats_col = st.columns([2, 5], gap="large")
     with video_col:
         video = find_video(chosen)
         if video:
-            # Nested column keeps portrait footage to a sane width; at full
-            # column width a 1080x1920 clip is taller than the viewport.
-            narrow, _ = st.columns([3, 2])
             try:
-                narrow.video(str(preview.playable(video)))
+                playable = preview.playable(video)
             except (OSError, subprocess.CalledProcessError) as failure:
-                narrow.warning(f"Could not prepare the video: {failure}")
+                st.warning(f"Could not prepare the video: {failure}")
+            else:
+                shape = preview.dimensions(playable)
+                if shape:
+                    # Reserve the right box before the video loads.
+                    st.markdown(
+                        f"<style>video {{ aspect-ratio: {shape[0]} / {shape[1]}; }}"
+                        f"</style>", unsafe_allow_html=True)
+                st.video(str(playable))
         else:
             st.caption(f"No video at {RAW_DIR}/{chosen}.*")
 

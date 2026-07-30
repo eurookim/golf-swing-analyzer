@@ -30,6 +30,7 @@ class Metric:
     meaning: str      # for the language model: precise, technical
     plain: str        # for the golfer: what it is and why it matters
     aim: str          # what "better" looks like, in one phrase
+    short: str        # tile heading — must be unique and fit on one line
 
 
 # Semantic descriptions, not display labels — the model needs to know what the
@@ -44,6 +45,7 @@ COACHING_METRICS: dict[str, Metric] = {
               "your backswing. If you stand up out of your posture going back, "
               "you have to find your way back down before impact.",
         aim="closer to 0 — hold the angle you set at address",
+        short="Posture change",
     ),
     "hip_depth_change": Metric(
         "Hip movement toward the ball", "torso lengths",
@@ -53,6 +55,7 @@ COACHING_METRICS: dict[str, Metric] = {
               "move usually called early extension. It steals room for your "
               "arms, so you have to stand up or flip the hands to make contact.",
         aim="closer to 0 — keep your backside where it started",
+        short="Hip move to ball",
     ),
     "head_rise_p4": Metric(
         "Head rise, address to top", "torso lengths",
@@ -60,6 +63,7 @@ COACHING_METRICS: dict[str, Metric] = {
         plain="Whether your head lifts or drops between address and the top. "
               "Moving it changes how far you are from the ball.",
         aim="closer to 0 — steady head height going back",
+        short="Head rise at top",
     ),
     "head_rise_p7": Metric(
         "Head rise, address to impact", "torso lengths",
@@ -68,6 +72,7 @@ COACHING_METRICS: dict[str, Metric] = {
               "This one shows up in your strike: lift and you thin it, drop "
               "and you catch it heavy.",
         aim="closer to 0 — same height at impact as at address",
+        short="Head rise at impact",
     ),
     "knee_extension_change": Metric(
         "Knee straightening", "degrees",
@@ -75,6 +80,7 @@ COACHING_METRICS: dict[str, Metric] = {
         plain="How much your knees straighten from address to impact. Some is "
               "normal and powerful; a lot of it pulls you up out of the shot.",
         aim="a smaller change than usual for you",
+        short="Knee straightening",
     ),
     "tempo_ratio": Metric(
         "Tempo ratio", "backswing : downswing",
@@ -85,6 +91,7 @@ COACHING_METRICS: dict[str, Metric] = {
               "tour players sit near 3:1. Treat this as the least trustworthy "
               "number here — it multiplies small timing errors.",
         aim="nearer 3:1",
+        short="Tempo",
     ),
 }
 
@@ -101,6 +108,9 @@ class Standing:
     rank: int | None       # 1 = largest. None when peers are too few to rank.
     n_peers: int
     median: float | None
+    # Tile heading. Defaults empty so tests can build a Standing without it;
+    # tile() falls back to the long label.
+    short: str = ""
 
 
 def _median(values: list[float]) -> float:
@@ -150,7 +160,8 @@ def standings(rows: list[dict], clip: str) -> list[Standing]:
             rank, median = None, None
 
         found.append(Standing(
-            metric=name, label=meta.label, unit=meta.unit, meaning=meta.meaning,
+            metric=name, label=meta.label, short=meta.short,
+            unit=meta.unit, meaning=meta.meaning,
             value=float(value), rank=rank, n_peers=compared, median=median,
         ))
     return found

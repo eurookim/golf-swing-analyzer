@@ -117,3 +117,17 @@ class TestFfmpegLocation:
 
         with pytest.raises(FileNotFoundError):
             preview.ffmpeg_path()
+
+
+class TestDimensions:
+    def test_reads_width_and_height(self, tmp_path):
+        clip = _make_clip(tmp_path / "a.mp4", brand="isom")
+        assert preview.dimensions(clip) == (32, 32)
+
+    def test_returns_none_for_a_missing_file(self, tmp_path):
+        assert preview.dimensions(tmp_path / "nope.mp4") is None
+
+    def test_returns_none_for_a_non_video(self, tmp_path):
+        junk = tmp_path / "a.mp4"
+        junk.write_bytes(b"not a video at all")
+        assert preview.dimensions(junk) is None

@@ -332,3 +332,20 @@ class TestComparison:
         s = coach.Standing(metric="head_rise_p7", label="", unit="", meaning="",
                            value=1.0, rank=None, n_peers=3, median=None)
         assert coach.comparison(s) is None
+
+
+class TestShortLabels:
+    def test_every_short_label_is_unique(self):
+        """Truncating labels at the comma made head_rise_p4 and head_rise_p7
+        both render as 'Head rise' — two tiles, same name, different numbers."""
+        shorts = [m.short for m in coach.COACHING_METRICS.values()]
+        assert len(shorts) == len(set(shorts)), f"duplicates in {shorts}"
+
+    def test_short_labels_stay_short_enough_for_a_tile(self):
+        for meta in coach.COACHING_METRICS.values():
+            assert len(meta.short) <= 24, f"{meta.short!r} will wrap awkwardly"
+
+    def test_the_two_head_rise_metrics_are_distinguishable(self):
+        top = coach.COACHING_METRICS["head_rise_p4"].short
+        impact = coach.COACHING_METRICS["head_rise_p7"].short
+        assert "top" in top.lower() and "impact" in impact.lower()

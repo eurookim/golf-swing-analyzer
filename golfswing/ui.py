@@ -91,9 +91,12 @@ CSS = """
   }
 
   /* No stVideo test-id exists, so target the element itself. Portrait phone
-     footage is 1080x1920; capping the height stops it filling the viewport. */
+     footage is 1080x1920. aspect-ratio is set per clip from the real stream
+     dimensions (see page_swing) so the box is correct BEFORE the video loads —
+     without it the browser reserves a 300x150 placeholder and the column
+     collapses, which is what left the large empty area beside the tiles. */
   video {
-    max-height: 66vh; width: auto; max-width: 100%;
+    max-height: 82vh; width: 100%; height: auto;
     border-radius: 8px; border: 1px solid var(--hairline); display: block;
   }
 
@@ -222,7 +225,7 @@ def tile(standing: Standing, notable: bool = False) -> str:
                  f'{VERDICT_WORDS[verdict]}</span>')
     return (
         f'<div class="metric-tile">'
-        f'  <div class="label">{standing.label.split(",")[0]}</div>'
+        f'  <div class="label">{standing.short or standing.label.split(",")[0]}</div>'
         f'  <div class="value">{standing.value:+.2f}'
         f'    <span class="unit">{standing.unit}</span></div>'
         f'  <div class="tile-foot">'
@@ -260,7 +263,7 @@ def guidance() -> str:
     parts = []
     for meta in COACHING_METRICS.values():
         parts.append(
-            f'<p class="guide-metric"><strong>{meta.label.split(",")[0]}</strong> — '
+            f'<p class="guide-metric"><strong>{meta.short}</strong> — '
             f'{meta.plain}<span class="guide-aim">Aim: {meta.aim}</span></p>'
         )
     return "".join(parts)
