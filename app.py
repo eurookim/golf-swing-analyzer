@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 
-from golfswing import db, faults, history
+from golfswing import coach, db, faults, history
 
 # Validated palette (light surface #fcfcfb): all checks pass, CVD ΔE 24.7.
 SURFACE = "#fcfcfb"
@@ -131,6 +131,19 @@ def page_distributions(rows, thresholds, club):
                   width='stretch')
 
 
+RAW_DIR = Path("data/raw")
+VIDEO_SUFFIXES = (".mov", ".MOV", ".mp4", ".MP4", ".m4v")
+
+
+def find_video(clip: str) -> Path | None:
+    """Locate the original clip. Suffix case varies with how it was exported."""
+    for suffix in VIDEO_SUFFIXES:
+        candidate = RAW_DIR / f"{clip}{suffix}"
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def page_swing(rows, thresholds, club):
     st.subheader("Single swing")
     clips = [r["clip"] for r in rows]
@@ -140,31 +153,64 @@ def page_swing(rows, thresholds, club):
     chosen = st.selectbox("Clip", clips, index=len(clips) - 1)
     row = next(r for r in rows if r["clip"] == chosen)
 
-    sheet = Path("outputs") / f"{chosen}_keyframes.jpg"
-    if sheet.exists():
-        st.image(str(sheet), width='stretch')
-    else:
-        st.caption(f"No key-frame sheet yet — run render_contact_sheet.py {chosen}")
-
-    left, right = st.columns(2)
+    video, sheet = find_video(chosen), Path("outputs") / f"{chosen}_keyframes.jpg"
+    left, right = st.columns([3, 4])
     with left:
-        st.markdown("**Metrics**")
-        st.dataframe(
-            {"metric": list(METRIC_LABELS.values()),
-             "value": [row[m] for m in METRIC_LABELS]},
-            hide_index=True, width='stretch',
-        )
+        if video:
+            st.video(str(video))
+        else:
+            st.caption(f"No video found at {RAW_DIR}/{chosen}.*")
     with right:
-        st.markdown("**Faults**")
-        st.warning(
-            "Thresholds are **not calibrated** — every value in thresholds.yaml "
-            "is invented until a session with genuinely exaggerated faults exists. "
-            "Treat any finding below as a hypothesis."
+        if sheet.exists():
+            st.image(str(sheet), width="stretch")
+        else:
+            st.caption(
+                f"No key-frame sheet yet — run "
+                f"`python render_contact_sheet.py {chosen}`"
+            )
+    st.caption(
+        f"Detected events — P1 {row['p1']} · P4 {row['p4']} · "
+        f"P7 {row['p7']} · P10 {row['p10']}   ({row['fps']:.0f} fps)"
+    )
+
+    found = coach.standings(rows, chosen)
+    st.markdown("**How this swing compares to your others**")
+    st.caption(
+        "Ranked against your own swings rather than a threshold — thresholds are "
+        "still uncalibrated, but your own distribution is real data."
+    )
+    st.dataframe(
+        {
+            "measurement": [s.label for s in found],
+            "this swing": [round(s.value, 3) for s in found],
+            "your median": [None if s.median is None else round(s.median, 3)
+                            for s in found],
+            "rank": ["—" if s.rank is None else f"{s.rank} of {s.n_peers}"
+                     for s in found],
+        },
+        hide_index=True, width="stretch",
+    )
+
+    _coaching_note(found, chosen)
+
+
+def _coaching_note(found, clip):
+    st.markdown("**Coaching note**")
+    if not coach.available():
+        st.info(
+            "Set an Anthropic API key to generate a written read of these "
+            "numbers:\n\n```\nexport ANTHROPIC_API_KEY=sk-ant-...\n```\n"
+            "Everything above works without it — the key is only for the "
+            "written summary."
         )
-        st.caption(
-            f"Detected events — P1 {row['p1']} · P4 {row['p4']} · "
-            f"P7 {row['p7']} · P10 {row['p10']}   ({row['fps']:.0f} fps)"
-        )
+        return
+
+    if st.button("Explain this swing", key=f"explain_{clip}"):
+        with st.spinner("Reading the numbers…"):
+            try:
+                st.markdown(coach.explain(found, clip))
+            except RuntimeError as failure:
+                st.error(str(failure))
 
 
 def page_trend(rows):
