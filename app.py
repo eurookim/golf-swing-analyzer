@@ -178,15 +178,14 @@ def page_swing(rows):
     with stats_col:
         st.markdown(ui.summary(found), unsafe_allow_html=True)
         if top:
-            # Only claim something stands out when it measurably does — the
-            # honest headline for a typical swing is that it was typical.
+            # A short structural label, not a repeated sentence. The caveat it
+            # used to carry ("compared against your own swings, not a
+            # threshold") is already in the summary line directly above, so
+            # saying it twice was noise on every single swing.
             notable = [s for s in top if coach.extremity(s) >= ui.NOTABLE_EXTREMITY]
             st.markdown(
-                "Furthest from your usual — ranked against your own swings of "
-                "the same club, not a threshold."
-                if notable else
-                "**Nothing stands out — a typical swing for you.** "
-                "Closest to the edges of your usual range:",
+                ui.section("Furthest from your usual" if notable
+                           else "Closest to the edges of your usual range"),
                 unsafe_allow_html=True)
             st.markdown(ui.tile_grid(top), unsafe_allow_html=True)
         else:
