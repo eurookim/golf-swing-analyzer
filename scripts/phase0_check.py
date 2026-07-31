@@ -27,13 +27,14 @@ import sys
 import urllib.request
 from pathlib import Path
 
+from golfswing import paths
+
 import cv2
 import numpy as np
 
-ROOT = Path(__file__).parent
-RAW_DIR = ROOT / "data" / "raw"
-OUT_DIR = ROOT / "outputs"
-MODEL_PATH = ROOT / "models" / "pose_landmarker_heavy.task"
+RAW_DIR = paths.RAW_DIR
+OUT_DIR = paths.OUTPUTS_DIR
+MODEL_PATH = paths.MODELS_DIR / "pose_landmarker_heavy.task"
 MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
     "pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task"
@@ -268,7 +269,7 @@ def analyse(path: Path) -> bool:
     detect_rate = detected / frames
     print(f"\n  Frames processed        {frames}")
     print(f"  Pose detected           {detected}/{frames}  ({detect_rate:.0%})")
-    print(f"  Annotated video         {out_path.relative_to(ROOT)}")
+    print(f"  Annotated video         {out_path.relative_to(paths.PROJECT_ROOT)}")
 
     print("\n  Landmark visibility (mean, and % of frames below "
           f"{VIS_THRESHOLD}):")

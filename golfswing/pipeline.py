@@ -10,7 +10,9 @@ import numpy as np
 from golfswing import pose, smooth, store
 from golfswing.sequence import PoseSequence
 
-DEFAULT_OUT_DIR = Path("data/processed")
+from golfswing.paths import PROCESSED_DIR
+
+DEFAULT_OUT_DIR = PROCESSED_DIR
 
 # Below this fraction of frames containing a detected pose, the clip is not
 # usable. Matches the Phase 0 GO/NO-GO threshold.

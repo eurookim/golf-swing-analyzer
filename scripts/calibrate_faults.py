@@ -21,11 +21,13 @@ import re
 import sys
 from pathlib import Path
 
+from golfswing import paths
+
 import numpy as np
 
 from golfswing import calibrate, faults, labels, metrics, store
 
-PROCESSED = Path("data/processed")
+PROCESSED = paths.PROCESSED_DIR
 
 
 def _club_of(stem: str) -> str | None:

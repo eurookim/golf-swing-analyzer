@@ -16,7 +16,7 @@ from pathlib import Path
 
 from golfswing import calibrate, db, events, labels, metrics, store
 
-PROCESSED_DIR = Path("data/processed")
+from golfswing.paths import PROCESSED_DIR
 
 _STEM = re.compile(
     r"^(?P<date>\d{4}-\d{2}-\d{2})_(?P<angle>[a-z]+)_(?P<club>[a-z0-9]+)_\d+"

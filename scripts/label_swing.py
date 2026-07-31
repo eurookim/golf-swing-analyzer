@@ -18,15 +18,16 @@ import argparse
 import sys
 from pathlib import Path
 
+from golfswing import paths
+
 import cv2
 import numpy as np
 
 from golfswing import events, ingest, labels, store
 
-ROOT = Path(__file__).parent
-PROCESSED = ROOT / "data" / "processed"
-RAW = ROOT / "data" / "raw"
-OUT_DIR = ROOT / "outputs"
+PROCESSED = paths.PROCESSED_DIR
+RAW = paths.RAW_DIR
+OUT_DIR = paths.OUTPUTS_DIR
 
 SPAN = 3          # frames either side of the detection
 PANEL_H = 260

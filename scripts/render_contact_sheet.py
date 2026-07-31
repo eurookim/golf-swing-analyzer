@@ -15,15 +15,16 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from golfswing import paths
+
 import cv2
 import numpy as np
 
 from golfswing import events, ingest, store
 
-ROOT = Path(__file__).parent
-PROCESSED = ROOT / "data" / "processed"
-RAW = ROOT / "data" / "raw"
-OUT_DIR = ROOT / "outputs"
+PROCESSED = paths.PROCESSED_DIR
+RAW = paths.RAW_DIR
+OUT_DIR = paths.OUTPUTS_DIR
 
 LABEL_H = 54
 PAD = 8

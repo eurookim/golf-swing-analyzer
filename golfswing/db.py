@@ -12,11 +12,13 @@ from __future__ import annotations
 import math
 import sqlite3
 from pathlib import Path
+
+from golfswing.paths import DB_PATH
 from typing import Any
 
 from golfswing.metrics import SwingMetrics
 
-DEFAULT_DB_PATH = Path("data/swings.db")
+DEFAULT_DB_PATH = DB_PATH
 
 METRIC_COLUMNS = (
     "spine_tilt_p1", "spine_tilt_p4", "spine_tilt_p7", "posture_change",

@@ -13,9 +13,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from golfswing import paths
+
 from golfswing import events, labels, store
 
-PROCESSED = Path("data/processed")
+PROCESSED = paths.PROCESSED_DIR
 
 
 def main() -> int:

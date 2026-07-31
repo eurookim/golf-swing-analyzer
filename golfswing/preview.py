@@ -19,7 +19,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
-CACHE_DIR = Path("data/previews")
+from golfswing.paths import PREVIEWS_DIR
+
+CACHE_DIR = PREVIEWS_DIR
 
 # A .app launched from Finder inherits a minimal PATH — notably WITHOUT
 # /opt/homebrew/bin — so shutil.which("ffmpeg") finds nothing even when ffmpeg

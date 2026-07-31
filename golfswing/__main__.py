@@ -12,9 +12,8 @@ import sys
 from pathlib import Path
 
 from golfswing import pipeline, pose, store
+from golfswing.paths import RAW_DIR, VIDEO_SUFFIXES
 
-RAW_DIR = Path("data/raw")
-VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
 
 
 def main(argv: list[str] | None = None) -> int:

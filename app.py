@@ -21,7 +21,7 @@ import streamlit as st
 
 from golfswing import coach, db, faults, history, preview, ui
 
-RAW_DIR = Path("data/raw")
+from golfswing.paths import OUTPUTS_DIR, RAW_DIR
 VIDEO_SUFFIXES = (".mov", ".MOV", ".mp4", ".MP4", ".m4v")
 
 METRIC_LABELS = {
@@ -186,7 +186,7 @@ def page_swing(rows):
                 f"{coach.MIN_PEERS_FOR_RANKING} of the same club are needed."
             )
 
-    sheet = Path("outputs") / f"{chosen}_keyframes.jpg"
+    sheet = OUTPUTS_DIR / f"{chosen}_keyframes.jpg"
     if sheet.exists():
         st.markdown(ui.section("Key frames"), unsafe_allow_html=True)
         st.image(str(sheet), width="stretch")

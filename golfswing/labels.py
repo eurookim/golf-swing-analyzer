@@ -14,7 +14,9 @@ import numpy as np
 
 from golfswing.events import SwingEvents
 
-DEFAULT_LABELS_DIR = Path("data/labels")
+from golfswing.paths import LABELS_DIR
+
+DEFAULT_LABELS_DIR = LABELS_DIR
 EVENT_KEYS = ("p1", "p4", "p7", "p10")
 
 

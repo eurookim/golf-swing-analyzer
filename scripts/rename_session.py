@@ -31,8 +31,9 @@ import sys
 from datetime import datetime, date
 from pathlib import Path
 
-ROOT = Path(__file__).parent
-RAW_DIR = ROOT / "data" / "raw"
+from golfswing import paths
+
+RAW_DIR = paths.RAW_DIR
 
 VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
 ANGLES = {"dtl", "fo"}

@@ -15,13 +15,15 @@ import argparse
 import sys
 from pathlib import Path
 
+from golfswing import paths
+
 import cv2
 import numpy as np
 
 from golfswing import events, ingest, store
 
-PROCESSED = Path("data/processed")
-RAW = Path("data/raw")
+PROCESSED = paths.PROCESSED_DIR
+RAW = paths.RAW_DIR
 OUT_DIR = Path("outputs")
 
 SURFACE = (251, 252, 252)
