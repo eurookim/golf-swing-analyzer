@@ -21,7 +21,7 @@ import numpy as np
 import streamlit as st
 
 from golfswing import (calibrate, coach, db, faults, history, naming,
-                       pipeline, pose, preview, ui)
+                       pipeline, pose, preview, skeleton, store, ui)
 
 from golfswing.paths import OUTPUTS_DIR, PROCESSED_DIR, RAW_DIR
 VIDEO_SUFFIXES = (".mov", ".MOV", ".mp4", ".MP4", ".m4v")
@@ -189,10 +189,8 @@ def page_swing(rows):
                 f"{coach.MIN_PEERS_FOR_RANKING} of the same club are needed."
             )
 
-    sheet = OUTPUTS_DIR / f"{chosen}_keyframes.jpg"
-    if sheet.exists():
-        st.markdown(ui.section("Key frames"), unsafe_allow_html=True)
-        st.image(str(sheet), width="stretch")
+    st.markdown(ui.section("Key frames"), unsafe_allow_html=True)
+    _key_frames(chosen, row, found)
 
     st.markdown(ui.section("Coaching note"), unsafe_allow_html=True)
     _coaching_note(found, chosen)
@@ -256,6 +254,33 @@ def _outcome_control(row):
     if chosen != current:
         db.set_outcome(_conn(), row["clip"], chosen)
         st.rerun()
+
+
+def _key_frames(clip, row, found):
+    video = find_video(clip)
+    if video is None:
+        st.caption("No video for this clip, so no key frames.")
+        return
+    try:
+        from golfswing.events import SwingEvents
+        sequence = store.load_sequence(PROCESSED_DIR / f"{clip}.npz")
+        strip = skeleton.key_frames(
+            video, sequence,
+            SwingEvents(row["p1"], row["p4"], row["p7"], row["p10"]), found)
+    except (OSError, ValueError) as failure:
+        st.caption(f"Could not draw the key frames: {failure}")
+        return
+    if strip is None:
+        st.caption("Could not read the video frames.")
+        return
+
+    st.image(strip[:, :, ::-1], width="stretch")     # BGR -> RGB
+    st.caption(
+        "Joints coloured where a measurement differs from your flushed swings — "
+        "red for more movement, green for less, plain white where it is typical "
+        "or not measured at that point. Address is never coloured: it is the "
+        "reference the others are measured from."
+    )
 
 
 def _coaching_note(found, clip):
