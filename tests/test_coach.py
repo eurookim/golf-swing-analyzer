@@ -403,3 +403,26 @@ class TestGoodSwingBaseline:
 
         assert hip.baseline == "flushed"
         assert hip.value == pytest.approx(0.90)
+
+
+class TestPromptDescribesTheBaseline:
+    """The prompt must say WHICH swings the comparison is against.
+
+    Saying "your normal swings" when the baseline is actually the ones the
+    golfer flushed changes what the coaching means — "more than your good
+    ones" is a sharper statement than "more than usual", and the model can
+    only make it if it is told."""
+
+    def _standings(self, baseline):
+        return [coach.Standing(
+            metric="hip_depth_change", label="Hip movement toward the ball",
+            short="Hip move to ball", unit="torso lengths", meaning="",
+            value=0.28, rank=1, n_peers=6, median=0.19, baseline=baseline)]
+
+    def test_says_flushed_when_that_is_the_baseline(self):
+        text = coach.build_prompt(self._standings("flushed"), "c1").lower()
+        assert "flushed" in text or "struck well" in text
+
+    def test_says_all_swings_when_nothing_is_labelled(self):
+        text = coach.build_prompt(self._standings("all"), "c1").lower()
+        assert "flushed" not in text

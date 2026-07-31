@@ -330,11 +330,20 @@ Ground rules, in order of importance:
 
 def build_prompt(found: list[Standing], clip: str) -> str:
     """Assemble the measurement context for one swing."""
+    # Which swings the comparison is against changes what the numbers mean, so
+    # the model has to be told. "More than the ones you flushed" is a sharper
+    # statement than "more than usual", and only available once labels exist.
+    against = (
+        "the swings this golfer marked as FLUSHED (struck well) with the same "
+        "club — so a difference here is a difference from their good swings"
+        if any(s.baseline == "flushed" for s in found) else
+        "this golfer's own swings with the same club (deliberate-practice "
+        "faults excluded)"
+    )
     lines = [
         f"Swing: {clip}",
         "",
-        "Measurements, each compared against this golfer's own normal swings",
-        "(deliberate-practice faults excluded from the baseline):",
+        f"Measurements, each compared against {against}:",
         "",
     ]
 
