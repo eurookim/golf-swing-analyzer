@@ -17,7 +17,50 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-MODEL = "claude-opus-5"
+from golfswing import paths
+
+def load_env_file(path: Path) -> None:
+    """Read KEY=value lines into the environment, without overriding it.
+
+    A .app launched from Finder inherits no shell environment, so a key
+    exported in .zshrc never reaches it — the same class of problem that hid
+    ffmpeg from the app. A .env file beside the code does reach it.
+    Already-set variables win, so a shell export still takes precedence.
+    """
+    try:
+        lines = Path(path).read_text().splitlines()
+    except OSError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
+load_env_file(paths.PROJECT_ROOT / ".env")
+
+# Haiku by default — a few sentences from six numbers does not need more, and
+# it costs roughly a fifth of Opus. Override with GOLFSWING_MODEL.
+MODEL = os.environ.get("GOLFSWING_MODEL", "claude-haiku-4-5")
+
+# Output ceilings differ: Haiku 4.5 caps at 64K, the Opus family at 128K.
+MAX_TOKENS = {"claude-haiku-4-5": 8000}
+
+
+def request_params(model: str) -> dict:
+    """Per-model request shape.
+
+    Adaptive thinking and output_config.effort are Opus-family features —
+    sending either to Haiku 4.5 turns every request into a 400, so the shape
+    has to follow the model rather than being fixed alongside it.
+    """
+    params: dict = {"max_tokens": MAX_TOKENS.get(model, 16000)}
+    if model.startswith(("claude-opus", "claude-sonnet-5", "claude-fable")):
+        params["thinking"] = {"type": "adaptive"}
+        params["output_config"] = {"effort": "low"}
+    return params
 
 # Below this, a "personal range" is a story rather than a measurement.
 MIN_PEERS_FOR_RANKING = 5
@@ -345,15 +388,15 @@ def explain(found: list[Standing], clip: str) -> str:
 
     client = anthropic.Anthropic()
     try:
-        response = client.beta.messages.create(
+        # Plain messages.create, not the beta endpoint: server-side refusal
+        # fallbacks are an Opus-5/Fable-5 feature, and this task — turning six
+        # numbers about a golf swing into two sentences — carries no realistic
+        # refusal risk to fall back from.
+        response = client.messages.create(
             model=MODEL,
-            max_tokens=16000,
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
             system=SYSTEM_PROMPT,
-            thinking={"type": "adaptive"},
-            output_config={"effort": "low"},
             messages=[{"role": "user", "content": build_prompt(found, clip)}],
+            **request_params(MODEL),
         )
     except anthropic.AuthenticationError as exc:     # pragma: no cover
         raise RuntimeError("Anthropic rejected the credentials.") from exc
