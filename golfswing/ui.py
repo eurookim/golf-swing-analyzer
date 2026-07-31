@@ -282,25 +282,28 @@ def guidance() -> str:
 
 
 def tile_grid(found: list[Standing]) -> str:
-    """Every measurement as a tile, most unusual first, at most one highlighted.
+    """Every measurement as a tile, in a FIXED position, at most one highlighted.
 
-    All of them are shown rather than a selected few. With six metrics there is
-    nothing meaningful to prioritise away, and showing a subset forced a header
-    explaining the selection — a line that never changed and overclaimed
-    ("furthest from your usual" sitting above three middling ranks). Ordering
-    conveys the same thing without asserting anything, and the per-tile rank
-    and verdict say precisely how unusual each one actually is.
+    Position is deliberately not meaningful. These were previously sorted by
+    how unusual each metric was for the swing being viewed, which meant the
+    layout reshuffled on every Prev/Next — the eye landed on a different metric
+    each time, so an unchanged number looked like it had moved and a changed
+    one could pass unnoticed. Flipping through a session is the main way this
+    page is used, and sorting broke it.
 
-    The single accent comes from the design brief: two competing highlights
-    give the eye nowhere to land. A typical swing highlights nothing at all.
+    The accent still marks the most extreme metric, which is what the ordering
+    was there to convey. That information does not need position to carry it.
     """
     if not found:
         return ""
-    ordered = sorted(found, key=extremity, reverse=True)
-    leads = extremity(ordered[0]) >= NOTABLE_EXTREMITY
-    tiles = "".join(
-        tile(s, notable=(i == 0 and leads)) for i, s in enumerate(ordered)
-    )
+    order = list(COACHING_METRICS)
+    ordered = sorted(found, key=lambda s: order.index(s.metric)
+                     if s.metric in order else len(order))
+
+    leader = max(ordered, key=extremity, default=None)
+    highlight = (leader.metric if leader is not None
+                 and extremity(leader) >= NOTABLE_EXTREMITY else None)
+    tiles = "".join(tile(s, notable=(s.metric == highlight)) for s in ordered)
     return f'<div class="tile-grid">{tiles}</div>'
 
 

@@ -426,3 +426,48 @@ class TestPromptDescribesTheBaseline:
     def test_says_all_swings_when_nothing_is_labelled(self):
         text = coach.build_prompt(self._standings("all"), "c1").lower()
         assert "flushed" not in text
+
+
+class TestTileOrderIsStable:
+    """Tiles must sit in the same place on every swing.
+
+    They used to be sorted by how unusual each metric was for that swing, so
+    the layout reshuffled with every Prev/Next — making it impossible to see
+    whether a number had changed, or that the baseline beneath it had not."""
+
+    def _standings(self, *ranks):
+        from golfswing.coach import COACHING_METRICS, Standing
+        names = list(COACHING_METRICS)
+        return [Standing(metric=names[i], label=names[i], short=names[i],
+                         unit="", meaning="", value=1.0, rank=r,
+                         n_peers=11, median=0.0)
+                for i, r in enumerate(ranks)]
+
+    def test_order_follows_the_metric_definition_not_the_values(self):
+        from golfswing import ui
+        from golfswing.coach import COACHING_METRICS
+        expected = list(COACHING_METRICS)[:4]
+
+        # Deliberately extreme in reverse order — must not reorder the tiles.
+        html = ui.tile_grid(self._standings(11, 6, 5, 1))
+
+        positions = [html.index(name) for name in expected]
+        assert positions == sorted(positions), "tiles were reordered"
+
+    def test_the_same_metrics_appear_in_the_same_order_for_any_swing(self):
+        from golfswing import ui
+        import re
+        calm = ui.tile_grid(self._standings(6, 5, 6, 5))
+        wild = ui.tile_grid(self._standings(1, 11, 2, 10))
+        names = lambda h: re.findall(r'class="label">([a-z_0-9]+)<', h)
+        assert names(calm) == names(wild)
+
+    def test_the_most_extreme_metric_is_still_the_highlighted_one(self):
+        """Position is fixed; the accent still marks what stands out."""
+        from golfswing import ui
+        html = ui.tile_grid(self._standings(6, 11, 5, 6))
+        before = html.index("is-notable")
+        # the second metric (rank 11 of 11) is the extreme one
+        from golfswing.coach import COACHING_METRICS
+        second = list(COACHING_METRICS)[1]
+        assert html.index(second) < before < html.index(list(COACHING_METRICS)[2])
