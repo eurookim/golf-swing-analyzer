@@ -123,7 +123,7 @@ Fault tags: `_posture` · `_earlyext` · `_headlift` · `_kneestraight` · `_qui
 The tag is not a note — it is the **expected answer**. Calibration asks "does the
 early-extension rule fire on the clip where I deliberately did it?"
 
-Zero-pad the numbers (`01`, not `1`) or they sort wrong. `rename_session.py` does
+Zero-pad the numbers (`01`, not `1`) or they sort wrong. `scripts/rename_session.py` does
 all of this for you.
 
 ---
@@ -135,7 +135,7 @@ all of this for you.
 
 **Not** plain "Export", **not** drag-and-drop. Both re-encode, and for Slo-Mo that
 bakes the slow motion in — you get a 30fps file that looks fine and silently
-ruins every measurement. `phase0_check.py` reports true capture fps as its first
+ruins every measurement. `scripts/phase0_check.py` reports true capture fps as its first
 output specifically to catch this.
 
 If the clips are only on the phone: AirDrop (which preserves the original), then
