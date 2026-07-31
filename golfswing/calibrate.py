@@ -142,3 +142,73 @@ def suggest(
         if best_key is None or key < best_key:
             best, best_key = float(candidate), key
     return best
+
+
+@dataclass(frozen=True)
+class Assessment:
+    """Whether one fault rule can be calibrated from the swings on file.
+
+    Lifted out of scripts/calibrate_faults.py so the app can show the same
+    thing. The status is the useful part: a threshold nobody can justify is
+    worse than an obviously missing one, because it looks authoritative.
+    """
+
+    rule: str
+    confidence: str
+    status: str          # "ready" | "not_separable" | "no_example"
+    current: float | None
+    suggested: float | None
+    normal_low: float | None
+    normal_high: float | None
+    fault_values: list[float]
+    n_normal: int
+    note: str
+
+
+_STATUS_NOTES = {
+    "no_example": "No clip tagged with this fault yet — film one, exaggerated.",
+    "not_separable": ("The deliberate fault sits inside the normal range. Either "
+                      "it was not exaggerated enough, or this metric does not "
+                      "capture it."),
+    "ready": "Cleanly separates your normal swings from the deliberate fault.",
+}
+
+
+def assess(rows: Sequence[dict], club: str | None = None,
+           thresholds: dict | None = None) -> list[Assessment]:
+    """Per-rule calibration status from swing history rows."""
+    from golfswing import faults          # imported here to avoid a cycle
+
+    usable = [r for r in rows if club is None or r.get("club") == club]
+    limits = faults._thresholds_for(thresholds or faults.load_thresholds(), club)
+
+    found = []
+    for rule in faults.RULES:
+        normal, fault = [], []
+        for row in usable:
+            value = row.get(rule.metric)
+            if value is None or not np.isfinite(value):
+                continue
+            (fault if row.get("fault_tag") == rule.name else normal).append(
+                float(value))
+
+        current = limits.get(rule.name)
+        if not fault:
+            status, suggested = "no_example", None
+        else:
+            suggested = suggest(normal, fault, rule.comparison)
+            result = score(normal, fault, suggested, rule.comparison)
+            # "ready" means the best available threshold makes no mistakes at
+            # all. Anything less is not a threshold worth writing down.
+            status = ("ready" if result.true_positive and result.errors == 0
+                      else "not_separable")
+
+        found.append(Assessment(
+            rule=rule.name, confidence=rule.confidence, status=status,
+            current=current, suggested=suggested,
+            normal_low=min(normal) if normal else None,
+            normal_high=max(normal) if normal else None,
+            fault_values=fault, n_normal=len(normal),
+            note=_STATUS_NOTES[status],
+        ))
+    return found

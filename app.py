@@ -20,8 +20,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 
-from golfswing import (coach, db, faults, history, naming, pipeline,
-                       pose, preview, ui)
+from golfswing import (calibrate, coach, db, faults, history, naming,
+                       pipeline, pose, preview, ui)
 
 from golfswing.paths import OUTPUTS_DIR, PROCESSED_DIR, RAW_DIR
 VIDEO_SUFFIXES = (".mov", ".MOV", ".mp4", ".MP4", ".m4v")
@@ -177,6 +177,7 @@ def page_swing(rows):
             st.caption(f"No video at {RAW_DIR}/{chosen}.*")
 
     with stats_col:
+        _outcome_control(row)
         st.markdown(ui.summary(found), unsafe_allow_html=True)
         # Every measurement, ordered most-unusual first. No section header:
         # showing a subset used to need one explaining the selection, and that
@@ -233,6 +234,28 @@ def _swing_picker(clips: list[str]) -> str:
     # Keep the arrows in step when the dropdown is used directly.
     st.session_state.clip_index = clips.index(chosen)
     return chosen
+
+
+OUTCOME_LABELS = {None: "Not recorded", "flushed": "Flushed it",
+                  "mishit": "Mishit", "unsure": "Not sure"}
+
+
+def _outcome_control(row):
+    """Record how the shot turned out.
+
+    The camera sits behind the golfer down the target line, so it never sees
+    where the ball finished — this is the one thing about a swing that cannot
+    be recovered from the footage, only remembered.
+    """
+    options = [None, "flushed", "mishit", "unsure"]
+    current = row["outcome"] if row["outcome"] in options else None
+    chosen = st.radio(
+        "How was this one?", options, index=options.index(current),
+        format_func=lambda v: OUTCOME_LABELS[v], horizontal=True,
+    )
+    if chosen != current:
+        db.set_outcome(_conn(), row["clip"], chosen)
+        st.rerun()
 
 
 def _coaching_note(found, clip):
@@ -392,6 +415,62 @@ def _run_import(conn, ready, unnamed, answers):
     st.rerun()
 
 
+STATUS_STYLE = {
+    "ready": ("verdict-better", "ready"),
+    "not_separable": ("verdict-worse", "can't separate"),
+    "no_example": ("verdict-typical", "no example yet"),
+}
+
+
+def page_calibration(rows, club):
+    st.markdown(
+        ui.heading("Calibration",
+                   "Whether each fault rule can be told apart from a normal "
+                   "swing yet. Until a rule is ready, the app reports rank "
+                   "within your own swings instead of naming a fault."),
+        unsafe_allow_html=True,
+    )
+
+    found = calibrate.assess(rows, club=None if club == "all" else club)
+    ready = sum(1 for a in found if a.status == "ready")
+    st.markdown(
+        f'<div class="summary-line"><span class="count">{ready} of '
+        f'{len(found)}</span> rules can be calibrated from the swings on file.'
+        f'</div>', unsafe_allow_html=True)
+
+    for entry in found:
+        style, word = STATUS_STYLE[entry.status]
+        st.markdown(
+            f'<div class="section-label" style="margin-top:26px">{entry.rule}'
+            f'<span class="verdict {style}" style="margin-left:10px;'
+            f'text-transform:none;letter-spacing:0">{word}</span></div>',
+            unsafe_allow_html=True)
+
+        left, right = st.columns([3, 2])
+        with left:
+            span = ("—" if entry.normal_low is None
+                    else f"{entry.normal_low:+.3g} … {entry.normal_high:+.3g}"
+                         f"  (n={entry.n_normal})")
+            faults_seen = (", ".join(f"{v:+.3g}" for v in entry.fault_values)
+                           or "none filmed")
+            st.markdown(
+                f"<div style='font-size:14px;line-height:1.7'>"
+                f"normal swings &nbsp;<code>{span}</code><br>"
+                f"deliberate fault &nbsp;<code>{faults_seen}</code><br>"
+                f"<span style='color:var(--muted)'>{entry.note}</span></div>",
+                unsafe_allow_html=True)
+        with right:
+            current = "—" if entry.current is None else f"{entry.current:.4g}"
+            st.markdown(f"<div style='font-size:14px'>current limit "
+                        f"<code>{current}</code></div>", unsafe_allow_html=True)
+            if entry.status == "ready":
+                st.markdown(f"<div style='font-size:14px'>suggested "
+                            f"<code>{entry.suggested:.4g}</code></div>",
+                            unsafe_allow_html=True)
+                st.button("Apply", key=f"apply_{entry.rule}", disabled=True,
+                          help="Writing thresholds.yaml is not wired up yet.")
+
+
 def page_distributions(rows, thresholds, club, highlight=None):
     st.markdown(
         ui.heading("Metric distributions",
@@ -444,7 +523,7 @@ def main():
     conn = _conn()
     st.sidebar.markdown("### Golf Swing Analyzer")
     view = st.sidebar.radio(
-        "View", ["Swing", "Add swings", "Distributions", "Trend"],
+        "View", ["Swing", "Add swings", "Calibration", "Distributions", "Trend"],
         label_visibility="collapsed")
 
     all_rows = db.load_swings(conn)
@@ -472,6 +551,8 @@ def main():
 
     if view == "Add swings":
         page_import(conn)
+    elif view == "Calibration":
+        page_calibration(rows, club)
     elif view == "Swing":
         page_swing(rows)
     elif view == "Distributions":

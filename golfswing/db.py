@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS swings (
     angle       TEXT,
     fps         REAL,
     fault_tag   TEXT,
+    outcome     TEXT,
     p1 INTEGER, p4 INTEGER, p7 INTEGER, p10 INTEGER,
     {', '.join(f'{name} REAL' for name in METRIC_COLUMNS)}
 );
@@ -55,6 +56,17 @@ def connect(path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn.executescript(_SCHEMA)
     conn.commit()
     return conn
+
+
+OUTCOMES = {"flushed", "mishit", "unsure"}
+
+
+def set_outcome(conn: sqlite3.Connection, clip: str, outcome: str | None) -> None:
+    """Record how the shot turned out, or clear it."""
+    if outcome is not None and outcome not in OUTCOMES:
+        raise ValueError(f"unknown outcome {outcome!r} — expected {sorted(OUTCOMES)}")
+    conn.execute("UPDATE swings SET outcome = ? WHERE clip = ?", (outcome, clip))
+    conn.commit()
 
 
 def _nullable(value: float) -> float | None:
@@ -81,11 +93,19 @@ def save_swing(
         metrics.events.p1, metrics.events.p4, metrics.events.p7, metrics.events.p10,
         *[_nullable(values[name]) for name in METRIC_COLUMNS],
     ]
+    # INSERT OR REPLACE rewrites the whole row, blanking any column not listed.
+    # The outcome is typed by hand and cannot be recomputed from the video, so
+    # carry it across a re-sync rather than silently discarding it.
+    existing = conn.execute(
+        "SELECT outcome FROM swings WHERE clip = ?", (clip,)).fetchone()
     conn.execute(
         f"INSERT OR REPLACE INTO swings ({', '.join(columns)}) "
         f"VALUES ({', '.join('?' * len(columns))})",
         row,
     )
+    if existing and existing["outcome"]:
+        conn.execute("UPDATE swings SET outcome = ? WHERE clip = ?",
+                     (existing["outcome"], clip))
     conn.commit()
 
 

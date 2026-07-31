@@ -150,3 +150,48 @@ class TestThreadSafety:
 
         assert not error, f"cross-thread use raised {error}"
         assert len(result) == 1
+
+
+class TestOutcome:
+    """How the shot actually turned out — the one thing the video cannot show.
+
+    The camera sits behind the golfer down the target line, so it never sees
+    where the ball finished. That knowledge is only in the golfer's head, which
+    is why it has to be recorded rather than inferred.
+    """
+
+    def test_a_new_swing_has_no_outcome(self, tmp_path):
+        conn = db.connect(tmp_path / "s.db")
+        db.save_swing(conn, **_record())
+        assert db.load_swings(conn)[0]["outcome"] is None
+
+    def test_an_outcome_can_be_recorded(self, tmp_path):
+        conn = db.connect(tmp_path / "s.db")
+        db.save_swing(conn, **_record(clip="a"))
+        db.set_outcome(conn, "a", "flushed")
+        assert db.load_swings(conn)[0]["outcome"] == "flushed"
+
+    def test_an_outcome_can_be_cleared(self, tmp_path):
+        conn = db.connect(tmp_path / "s.db")
+        db.save_swing(conn, **_record(clip="a"))
+        db.set_outcome(conn, "a", "flushed")
+        db.set_outcome(conn, "a", None)
+        assert db.load_swings(conn)[0]["outcome"] is None
+
+    def test_an_unknown_outcome_is_rejected(self, tmp_path):
+        """A typo'd value would silently drop the swing out of the baseline."""
+        conn = db.connect(tmp_path / "s.db")
+        db.save_swing(conn, **_record(clip="a"))
+        with pytest.raises(ValueError):
+            db.set_outcome(conn, "a", "greatshot")
+
+    def test_re_syncing_a_clip_keeps_its_outcome(self, tmp_path):
+        """Re-processing footage must not discard a label typed by hand — it is
+        the only data here that cannot be recomputed from the video."""
+        conn = db.connect(tmp_path / "s.db")
+        db.save_swing(conn, **_record(clip="a"))
+        db.set_outcome(conn, "a", "flushed")
+
+        db.save_swing(conn, **_record(clip="a"))      # re-sync
+
+        assert db.load_swings(conn)[0]["outcome"] == "flushed"

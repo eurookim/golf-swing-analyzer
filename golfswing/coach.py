@@ -151,6 +151,9 @@ class Standing:
     rank: int | None       # 1 = largest. None when peers are too few to rank.
     n_peers: int
     median: float | None
+    # "flushed" when the comparison is against swings the golfer marked good,
+    # "all" when there were too few of those to mean anything.
+    baseline: str = "all"
     # Tile heading. Defaults empty so tests can build a Standing without it;
     # tile() falls back to the long label.
     short: str = ""
@@ -179,10 +182,20 @@ def standings(rows: list[dict], clip: str) -> list[Standing]:
     # Same club only. Tempo and hip depth genuinely differ between a driver and
     # a wedge, so a mixed baseline ranks a swing against a different motion —
     # the project's "club is metadata, never inferred" rule applied to ranking.
-    baseline = [
+    same_club = [
         r for r in rows
         if r["fault_tag"] is None and r.get("club") == subject.get("club")
     ]
+
+    # Prefer the swings that actually worked. "Unlike your swings that flushed"
+    # is a far more useful statement than "unusual for you" — but only once
+    # there are enough of them to define anything, otherwise it is one or two
+    # swings masquerading as a target.
+    flushed = [r for r in same_club if r.get("outcome") == "flushed"]
+    if len(flushed) >= MIN_PEERS_FOR_RANKING:
+        baseline, baseline_kind = flushed, "flushed"
+    else:
+        baseline, baseline_kind = same_club, "all"
 
     found = []
     for name, meta in COACHING_METRICS.items():
@@ -206,6 +219,7 @@ def standings(rows: list[dict], clip: str) -> list[Standing]:
             metric=name, label=meta.label, short=meta.short,
             unit=meta.unit, meaning=meta.meaning,
             value=float(value), rank=rank, n_peers=compared, median=median,
+            baseline=baseline_kind,
         ))
     return found
 

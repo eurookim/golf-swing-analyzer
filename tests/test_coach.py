@@ -349,3 +349,57 @@ class TestShortLabels:
         top = coach.COACHING_METRICS["head_rise_p4"].short
         impact = coach.COACHING_METRICS["head_rise_p7"].short
         assert "top" in top.lower() and "impact" in impact.lower()
+
+
+class TestGoodSwingBaseline:
+    """Compare against the swings that actually worked, when there are enough."""
+
+    def _rows(self, n_good, n_other, **metrics):
+        rows = [_row(f"g{i}", **metrics) | {"outcome": "flushed"}
+                for i in range(n_good)]
+        rows += [_row(f"b{i}", **metrics) | {"outcome": "mishit"}
+                 for i in range(n_other)]
+        return rows
+
+    def test_uses_only_flushed_swings_when_there_are_enough(self):
+        rows = [_row(f"g{i}", hip_depth_change=0.10) | {"outcome": "flushed"}
+                for i in range(6)]
+        rows += [_row(f"b{i}", hip_depth_change=9.0) | {"outcome": "mishit"}
+                 for i in range(6)]
+
+        hip = next(s for s in coach.standings(rows, "g0")
+                   if s.metric == "hip_depth_change")
+
+        assert hip.n_peers == 6, "mishits must not enter the good baseline"
+        assert hip.median == pytest.approx(0.10)
+        assert hip.baseline == "flushed"
+
+    def test_falls_back_to_all_swings_when_too_few_are_flushed(self):
+        """Three good swings cannot define a target; say so rather than pretend."""
+        rows = [_row(f"g{i}", hip_depth_change=0.10) | {"outcome": "flushed"}
+                for i in range(3)]
+        rows += [_row(f"b{i}", hip_depth_change=0.20) | {"outcome": "mishit"}
+                 for i in range(6)]
+
+        hip = next(s for s in coach.standings(rows, "g0")
+                   if s.metric == "hip_depth_change")
+
+        assert hip.n_peers == 9
+        assert hip.baseline == "all"
+
+    def test_unlabelled_swings_fall_back_to_all(self):
+        rows = [_row(f"c{i}", hip_depth_change=0.10) for i in range(8)]
+        hip = next(s for s in coach.standings(rows, "c0")
+                   if s.metric == "hip_depth_change")
+        assert hip.baseline == "all"
+
+    def test_a_mishit_can_still_be_examined_against_the_good_ones(self):
+        rows = [_row(f"g{i}", hip_depth_change=0.10) | {"outcome": "flushed"}
+                for i in range(6)]
+        rows.append(_row("bad", hip_depth_change=0.90) | {"outcome": "mishit"})
+
+        hip = next(s for s in coach.standings(rows, "bad")
+                   if s.metric == "hip_depth_change")
+
+        assert hip.baseline == "flushed"
+        assert hip.value == pytest.approx(0.90)
