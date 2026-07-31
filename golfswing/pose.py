@@ -8,6 +8,8 @@ from __future__ import annotations
 import urllib.request
 from pathlib import Path
 
+from golfswing import paths
+
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -17,7 +19,7 @@ from mediapipe.tasks.python import vision as mp_vision
 from golfswing import ingest
 from golfswing.sequence import N_LANDMARKS, PoseSequence
 
-DEFAULT_MODEL = Path(__file__).parent.parent / "models" / "pose_landmarker_heavy.task"
+DEFAULT_MODEL = paths.MODELS_DIR / "pose_landmarker_heavy.task"
 MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
     "pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task"

@@ -24,7 +24,7 @@ from golfswing import events, ingest, store
 
 PROCESSED = paths.PROCESSED_DIR
 RAW = paths.RAW_DIR
-OUT_DIR = Path("outputs")
+OUT_DIR = paths.OUTPUTS_DIR
 
 SURFACE = (251, 252, 252)
 INK = (11, 11, 11)

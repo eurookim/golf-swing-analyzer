@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+
+from golfswing import paths
 from typing import Literal
 
 import numpy as np
@@ -23,7 +25,7 @@ import yaml
 
 from golfswing.metrics import SwingMetrics
 
-DEFAULT_THRESHOLDS_PATH = Path(__file__).parent.parent / "thresholds.yaml"
+DEFAULT_THRESHOLDS_PATH = paths.THRESHOLDS
 
 Comparison = Literal["above", "below", "magnitude"]
 Confidence = Literal["high", "medium", "low"]
