@@ -45,7 +45,12 @@ def connect(path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Open (creating if needed) the history database."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    # check_same_thread=False because Streamlit caches this connection across
+    # script runs, and each run happens on a script-runner thread that may not
+    # be the one that opened it. Safe here: Streamlit serialises script runs, so
+    # only one thread touches the connection at a time, and this is a
+    # single-user local app with no concurrent writers.
+    conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
     conn.commit()

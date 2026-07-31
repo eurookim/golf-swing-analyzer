@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 import subprocess
+from datetime import date
 from pathlib import Path
 
 import matplotlib
@@ -19,9 +20,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 
-from golfswing import coach, db, faults, history, preview, ui
+from golfswing import (coach, db, faults, history, naming, pipeline,
+                       pose, preview, ui)
 
-from golfswing.paths import OUTPUTS_DIR, RAW_DIR
+from golfswing.paths import OUTPUTS_DIR, PROCESSED_DIR, RAW_DIR
 VIDEO_SUFFIXES = (".mov", ".MOV", ".mp4", ".MP4", ".m4v")
 
 METRIC_LABELS = {
@@ -253,6 +255,143 @@ def _coaching_note(found, clip):
                             unsafe_allow_html=True)
 
 
+SECONDS_PER_CLIP = 22          # measured on a 2.4s 120fps clip
+
+
+def page_import(conn):
+    st.markdown(
+        ui.heading("Add swings",
+                   f"Drop clips into {RAW_DIR} — from Photos, AirDrop, anywhere."),
+        unsafe_allow_html=True,
+    )
+
+    # Results are stashed and shown after a rerun. Rendering them inline left
+    # the "needs details" form on screen listing a file that had already been
+    # renamed and processed.
+    result = st.session_state.pop("import_result", None)
+    if result:
+        st.success(result["summary"])
+        for message in result["warnings"]:
+            st.warning(message)
+
+    pending = history.pending_clips()
+    if not pending:
+        if not result:
+            st.success("Everything in data/raw has been processed.")
+        else:
+            st.caption("Open **Swing** in the sidebar to see them.")
+        return
+
+    ready = [p for p in pending if naming.follows_convention(p.stem)]
+    unnamed = [p for p in pending if not naming.follows_convention(p.stem)]
+
+    if ready:
+        st.markdown(ui.section(f"Ready to import — {len(ready)}"),
+                    unsafe_allow_html=True)
+        for path in ready:
+            meta = history.parse_clip(path.stem)
+            st.markdown(
+                f"<div style='font-size:14px;color:var(--secondary);'>{path.name}"
+                f"<span style='color:var(--muted)'> · {meta.date} · {meta.angle}"
+                f" · {meta.club}"
+                + (f" · {meta.fault_tag}" if meta.fault_tag else "")
+                + "</span></div>", unsafe_allow_html=True)
+
+    answers: dict[Path, dict] = {}
+    if unnamed:
+        st.markdown(ui.section(f"Needs details — {len(unnamed)}"),
+                    unsafe_allow_html=True)
+        st.caption(
+            "The filename is the only record of a clip's club and angle, and a "
+            "swing whose club is unknown can never be ranked — ranking compares "
+            "against the same club only. So these are asked for, never guessed."
+        )
+        same = st.checkbox(
+            "All of these are from one session (ask once)", value=True)
+
+        for position, path in enumerate(unnamed):
+            first = position == 0
+            if same and not first:
+                answers[path] = dict(answers[unnamed[0]])
+                continue
+            st.markdown(f"**{path.name}**")
+            c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+            answers[path] = {
+                "when": c1.date_input("Date", value=date.today(),
+                                      key=f"d_{path.name}"),
+                "angle": c2.selectbox("Angle", sorted(naming.ANGLES),
+                                      key=f"a_{path.name}"),
+                "club": c3.text_input("Club", value="7iron",
+                                      key=f"c_{path.name}"),
+                "fault": c4.selectbox("Deliberate fault",
+                                      ["none", *sorted(naming.FAULT_TAGS)],
+                                      key=f"f_{path.name}"),
+            }
+
+    seconds = len(pending) * SECONDS_PER_CLIP
+    estimate = (f"{seconds}s" if seconds < 90
+                else f"{seconds / 60:.0f} min")
+    plural = "" if len(pending) == 1 else "s"
+    st.markdown(ui.section("Import"), unsafe_allow_html=True)
+    st.caption(
+        f"About {estimate} for {len(pending)} clip{plural} "
+        f"(~{SECONDS_PER_CLIP}s each). Keep this window open — pose extraction "
+        "runs here, and closing it stops the job."
+    )
+    if not st.button(f"Import {len(pending)} swing{plural}", type="primary"):
+        return
+
+    _run_import(conn, ready, unnamed, answers)
+
+
+def _run_import(conn, ready, unnamed, answers):
+    """Rename what needs it, extract keypoints, then file everything."""
+    renamed, failures = list(ready), []
+
+    for path in unnamed:
+        choice = answers[path]
+        try:
+            index = naming.next_index(RAW_DIR, choice["when"],
+                                      choice["angle"], choice["club"])
+            renamed.append(naming.rename_to_convention(
+                path, choice["when"], choice["angle"], choice["club"], index,
+                None if choice["fault"] == "none" else choice["fault"],
+            ))
+        except (ValueError, FileExistsError, OSError) as failure:
+            failures.append(f"{path.name}: {failure}")
+
+    if not renamed:
+        st.error("Nothing to import.")
+        for message in failures:
+            st.warning(message)
+        return
+
+    pose.ensure_model()
+    bar = st.progress(0.0, text="Starting…")
+    done = 0
+    for position, path in enumerate(renamed, start=1):
+        bar.progress((position - 1) / len(renamed), text=f"Analysing {path.name}…")
+        try:
+            pipeline.process_clip(path, out_dir=PROCESSED_DIR)
+            done += 1
+        except Exception as failure:          # one bad clip must not stop the rest
+            failures.append(f"{path.name}: {failure}")
+    bar.progress(1.0, text="Filing results…")
+
+    written, skipped = history.sync(conn)
+    bar.empty()
+
+    plural = "" if len(renamed) == 1 else "s"
+    st.session_state["import_result"] = {
+        "summary": f"{done} of {len(renamed)} clip{plural} analysed · "
+                   f"{written} swings on file",
+        "warnings": failures + skipped,
+    }
+    if done:
+        st.session_state.pop("clip_index", None)   # land on the newest swing
+    st.rerun()
+
+
 def page_distributions(rows, thresholds, club, highlight=None):
     st.markdown(
         ui.heading("Metric distributions",
@@ -304,14 +443,16 @@ def main():
 
     conn = _conn()
     st.sidebar.markdown("### Golf Swing Analyzer")
-    view = st.sidebar.radio("View", ["Swing", "Distributions", "Trend"],
-                            label_visibility="collapsed")
+    view = st.sidebar.radio(
+        "View", ["Swing", "Add swings", "Distributions", "Trend"],
+        label_visibility="collapsed")
 
     all_rows = db.load_swings(conn)
     if not all_rows:
-        st.info("No swings yet. Run `python -m golfswing`, then press Rescan.")
-        if st.sidebar.button("Rescan data/processed"):
-            st.rerun()
+        if view == "Add swings":
+            page_import(conn)
+        else:
+            st.info("No swings yet — open **Add swings** in the sidebar.")
         return
 
     clubs = sorted({r["club"] for r in all_rows if r["club"]})
@@ -329,7 +470,9 @@ def main():
         for message in skipped:
             st.sidebar.warning(message)
 
-    if view == "Swing":
+    if view == "Add swings":
+        page_import(conn)
+    elif view == "Swing":
         page_swing(rows)
     elif view == "Distributions":
         page_distributions(rows, faults.load_thresholds(),

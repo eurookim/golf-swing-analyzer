@@ -123,3 +123,30 @@ class TestQuerying:
 
     def test_empty_database_returns_no_rows(self, tmp_path):
         assert db.load_swings(db.connect(tmp_path / "s.db")) == []
+
+
+class TestThreadSafety:
+    def test_a_connection_works_from_another_thread(self, tmp_path):
+        """Streamlit runs each script run on a script-runner thread, and the
+        cached connection outlives any one of them. SQLite rejects cross-thread
+        use by default, which surfaced as a ProgrammingError traceback filling
+        the whole page the moment a rerun landed on a different thread."""
+        import threading
+
+        conn = db.connect(tmp_path / "s.db")
+        db.save_swing(conn, **_record())
+
+        result, error = [], []
+
+        def read():
+            try:
+                result.extend(db.load_swings(conn))
+            except Exception as exc:            # noqa: BLE001 - recording it
+                error.append(exc)
+
+        thread = threading.Thread(target=read)
+        thread.start()
+        thread.join()
+
+        assert not error, f"cross-thread use raised {error}"
+        assert len(result) == 1

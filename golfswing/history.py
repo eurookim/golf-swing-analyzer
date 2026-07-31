@@ -16,7 +16,7 @@ from pathlib import Path
 
 from golfswing import calibrate, db, events, labels, metrics, store
 
-from golfswing.paths import PROCESSED_DIR
+from golfswing.paths import PROCESSED_DIR, RAW_DIR, VIDEO_SUFFIXES
 
 _STEM = re.compile(
     r"^(?P<date>\d{4}-\d{2}-\d{2})_(?P<angle>[a-z]+)_(?P<club>[a-z0-9]+)_\d+"
@@ -47,6 +47,23 @@ def parse_clip(stem: str) -> ClipMeta:
         angle=match.group("angle"),
         club=match.group("club"),
         fault_tag=calibrate.fault_tag(stem),   # raises on an unknown tag
+    )
+
+
+def pending_clips(raw_dir: Path | str = RAW_DIR,
+                  processed_dir: Path | str = PROCESSED_DIR) -> list[Path]:
+    """Raw clips with no cached keypoints yet, oldest name first.
+
+    Sorted so a progress bar advances in a predictable order rather than
+    whatever order the filesystem happens to hand back.
+    """
+    raw_dir, processed_dir = Path(raw_dir), Path(processed_dir)
+    if not raw_dir.is_dir():
+        return []
+    return sorted(
+        path for path in raw_dir.iterdir()
+        if path.suffix.lower() in VIDEO_SUFFIXES
+        and not (processed_dir / f"{path.stem}.npz").exists()
     )
 
 
