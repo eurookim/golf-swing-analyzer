@@ -3,11 +3,20 @@ name = "golfswing"
 version = "0.1.0"
 description = "Local golf swing video analyzer — named faults + metrics from down-the-line footage"
 requires-python = ">=3.11"
+# Every third-party import in the project. Previously only the first four were
+# declared, so a fresh clone installed cleanly and then crashed on `import
+# streamlit` — the setup instructions did not actually work.
 dependencies = [
-    "mediapipe",
-    "opencv-python",
+    "mediapipe",        # pose estimation
+    "opencv-python",    # video decode, drawing
     "numpy",
-    "scipy",
+    "scipy",            # Savitzky-Golay smoothing
+    "streamlit",        # the UI
+    "matplotlib",       # distribution and trend charts
+    "PyYAML",           # thresholds.yaml
+    "Pillow",           # app icon builder
+    "pywebview",        # native macOS window (desktop.py)
+    "anthropic",        # optional coaching note; unused without an API key
 ]
 
 [project.optional-dependencies]

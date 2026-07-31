@@ -1,145 +1,157 @@
 # Golf Swing Analyzer
 
-Personal tool that analyzes golf swing videos recorded at the range and reports
-**named swing faults** plus **numeric metrics**, with history tracked over time.
+Film your swing at the range. Drop the clips in. Get measurements of what your
+body actually did — and how this swing compares with the ones you struck well.
 
-Runs locally on a laptop. No cloud, no accounts, no mobile app.
-
-See [`PLAN.md`](PLAN.md) for the full architecture, metric definitions, fault
-rules, and design rationale.
+Runs entirely on your laptop. No cloud, no account, no upload. Your video never
+leaves your machine.
 
 ---
 
-## Status
+## What it does
 
-**Phases 0-5 complete.** 15 clips hand-labeled at 120fps; event detection
-measured against them at **P4 0.4 / P7 0.4 frames** mean absolute error.
+- **Finds the four key positions** in every swing automatically — address, top
+  of backswing, impact, finish — accurate to under half a frame at 120fps
+- **Measures six things** your body did: posture change, hip movement toward the
+  ball, head rise at the top and at impact, knee straightening, and tempo
+- **Compares each swing against your own history**, not against a textbook —
+  "the most hip movement of your 16" is something it can actually prove
+- **Draws the skeleton on the key frames**, colouring whatever differed most
+- **Writes a plain-English read** of the numbers (optional, needs an API key)
 
-**Phase 4 is blocked on footage, not code.** The fault engine works, but every
-threshold in `thresholds.yaml` is still invented: a session of deliberately
-exaggerated faults measured *inside* the normal range, so no rule can yet
-separate a fault from a normal swing. Until that is re-shot, the app compares
-each swing against the golfer's own distribution instead — which needs no
-thresholds and is true today. See `CAPTURE.md`.
+## What it deliberately doesn't do
+
+**It won't tell you a swing was good or bad.** There is no validated standard
+for these measurements, so it compares you against yourself instead. That's a
+real comparison; a scored verdict would be invented.
+
+**It can't see the club.** Pose estimation gives 33 body joints and nothing
+else — so no club path, no face angle, no swing plane, no clubhead speed. Body
+motion only.
+
+**It's down-the-line only.** Face-on footage imports but nothing is computed
+from it yet.
+
+**One clip per swing.** It doesn't split a continuous range video into
+individual swings.
+
+---
+
+## Requirements
+
+- **macOS** (the desktop app is Mac-only; the web UI runs anywhere)
+- **Python 3.11+**
+- **ffmpeg** — `brew install ffmpeg`
+- A phone that shoots **60fps or better**. 120fps is much better.
+
+## Setup
 
 ```bash
-# One-time setup
+git clone https://github.com/YOURNAME/golf-swing-analyzer.git
+cd golf-swing-analyzer
+
+python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 
-# Everything below is run from the repo root
-.venv/bin/python -m golfswing                     # extract + cache keypoints
-.venv/bin/streamlit run app.py                    # the app (or open the macOS app)
-./install_app.sh                                  # build a double-clickable .app
-.venv/bin/pytest -q                               # 256 tests
+# Optional: a written coaching note on each swing
+cp .env.example .env          # then paste an Anthropic API key into it
 ```
 
-**v1 angle: down-the-line only.** Face-on deferred to v2.
+The pose model (~30MB) downloads by itself the first time you process a clip.
 
-| Phase | Deliverable | Status |
-|-------|-------------|--------|
-| **0** | Run MediaPipe on existing 60fps DTL clips, dump annotated video. **GO / NO-GO.** | ✅ |
-| **1** | `ingest` + `pose` + smoothing + persisted keypoints (CLI only) | ✅ |
-| **2** | Event detection (P1/P4/P7/P10) + hand-labeled ground-truth set | ✅ |
-| **3** | DTL metrics with torso-length normalization | ✅ |
-| **4** | Fault rules + per-club `thresholds.yaml` + tuning | 🔄 engine done, thresholds uncalibrated |
-| **5** | Streamlit UI, SQLite history, trend charts | ✅ |
-| **6** | Swing segmentation — split a continuous range video into individual swings | ☐ |
-| **7** | *Optional.* Shaft-line detection → swing plane. Decide after Phase 3. | ☐ |
+### Launching it
+
+```bash
+.venv/bin/streamlit run app.py
+```
+
+Or build a double-clickable Mac app:
+
+```bash
+./install_app.sh              # creates ~/Applications/Golf Swing Analyzer.app
+```
 
 ---
 
-## The three constraints that shape everything
+## Using it
 
-1. **Frame rate decides which metrics are trustworthy.** A downswing is ~0.25s —
-   7 frames at 30fps (unusable), ~15 at 60fps (workable), ~60 at 240fps (ideal).
-   60fps holds up here because most faults are measured at address and top of
-   backswing, the slow moments. Only impact-anchored metrics degrade. **fps is
-   always read from `ffprobe`, never assumed.**
-2. **The club is invisible.** MediaPipe gives 33 *body* joints and nothing about
-   the club. Body-driven metrics are cheap; swing plane and club path need a
-   separate detector — optional Phase 7.
-3. **Camera angle changes the meaning of every metric.** Face-on and
-   down-the-line support different metrics. Every video is tagged with its angle
-   at ingest, and only angle-valid metrics are computed.
+**1. Film.** Camera on the target line behind you, hand height, ~10–12 ft back.
+Tripod fixed, one clip per swing, bright light. Full guide in
+[`CAPTURE.md`](CAPTURE.md) — the setup matters more than anything in this repo.
 
-**Why DTL first:** footage already exists so Phase 0 starts now; it's the harder
-pose problem (arms cross the torso, trail leg hides behind lead leg), making it a
-stronger GO/NO-GO gate; and early extension — a very common amateur fault — is
-invisible face-on.
+**2. Import.** Drop the clips into `data/raw/`, open the app, go to **Add
+swings**. Anything not already named to the convention it asks you about once
+and renames for you. Roughly 20 seconds a clip to analyse.
+
+**3. Label.** On each swing, mark whether you flushed it or mishit it. Once five
+of a club are marked flushed, every comparison switches to measuring against
+those — *"more than the ones you struck well"* rather than *"more than usual"*.
+
+**4. Look.** Video, the six measurements with how each compares, key frames with
+the skeleton drawn on, and a written note if you set up a key.
 
 ---
 
-## Capture setup
+## Fault detection, and why it's off
 
-- **Down-the-line**: camera *on the target line* behind you (extend the
-  ball-to-target line backward through yourself), hand height, ~10–12 ft.
-  Placing it behind your *body* rather than the *line* skews every angle.
-- **Slo-Mo (120/240fps) when possible**; 60fps works for v1. Bright light matters
-  more than frame rate — motion blur wrecks pose accuracy.
-- **Tripod at a fixed height** — consistency beats correctness. Mark the spot.
-- **Fitted clothing** contrasting with the background
-- **One club (7-iron)** for the first session
-- **Stop-start recording, one clip per swing** until Phase 6 lands — the pipeline
-  currently assumes one clip = one swing, and separate files make the
-  deliberate-fault labels trivial
-- Filenames: `2026-07-28_dtl_7iron_01.mov`
+There's a rules engine that names faults — loss of posture, early extension,
+head lift, knee straightening, quick tempo. **It's disabled, because the
+thresholds aren't calibrated.**
+
+Calibrating needs clips where you *deliberately and obviously* exaggerate each
+fault, so the app can find a value separating those from your normal swings.
+The **Calibration** view shows which rules have enough evidence and which don't,
+and names exactly what's missing.
+
+The bar to clear when filming those:
+
+> **If you still hit the ball decently, the fault wasn't big enough.**
+
+Until then the app reports rank within your own swings, which needs no
+thresholds and is true today.
 
 ---
 
-## Repo layout
+## How it works
 
 ```
-golf-swing-analyzer/
-├── PLAN.md            architecture, metrics, fault rules, phases
-├── CAPTURE.md         what to film, and how — read before a range session
-├── thresholds.yaml    fault thresholds (INVENTED until calibrated)
-├── pyproject.toml
-│
-├── app.py             Streamlit UI — the page layout
-├── desktop.py         runs the app in a native macOS window
-├── install_app.sh     builds the double-clickable .app
-│
-├── golfswing/         the package — everything importable
-│   ├── ingest.py      ffprobe true fps + rotation, downscale, tag angle
-│   ├── pose.py        MediaPipe Pose Landmarker → (n_frames, 33, 4)
-│   ├── smooth.py      Savitzky-Golay along time axis
-│   ├── sequence.py    the (landmarks, times, fps) value type
-│   ├── events.py      detect P1 / P4 / P7 / P10
-│   ├── metrics.py     angles + normalised distances at key frames
-│   ├── faults.py      rule engine over metrics
-│   ├── coach.py       rank a swing against the golfer's own history
-│   ├── calibrate.py   measure thresholds from tagged fault clips
-│   ├── labels.py      hand-labeled ground truth, read + write
-│   ├── store.py       keypoint cache (.npz)
-│   ├── db.py          SQLite swing history
-│   ├── history.py     cached clips → history rows
-│   ├── preview.py     browser-playable copies of raw clips
-│   ├── pipeline.py    ingest → pose → smooth → cache
-│   └── ui.py          CSS and stat-tile markup for app.py
-│
-├── scripts/           one-off tools, all run from the repo root
-│   ├── phase0_check.py         GO/NO-GO pose check on raw footage
-│   ├── rename_session.py       bulk-rename exports to the convention
-│   ├── label_swing.py          frame strips for hand-labeling events
-│   ├── zoom_event.py           close-up of a single event frame
-│   ├── render_contact_sheet.py 4 key frames per swing
-│   ├── evaluate_events.py      score the detector against ground truth
-│   ├── calibrate_faults.py     suggest thresholds from tagged clips
-│   └── make_icon.py            build the macOS app icon
-│
-├── tests/             256 tests, one module per package module
-└── data/
-    ├── raw/           swing videos            (gitignored — too large)
-    ├── processed/     keypoint dumps          (gitignored — regenerable)
-    ├── previews/      browser-playable clips  (gitignored — regenerable)
-    └── labels/        hand-labeled P-frames   (TRACKED — the valuable part)
+video → ffprobe (true fps, rotation) → MediaPipe Pose (33 joints/frame)
+      → Savitzky-Golay smoothing → event detection (P1/P4/P7/P10)
+      → metrics normalised by torso length → comparison against your history
 ```
 
-## What's tracked vs. ignored
+Every distance is divided by **torso length** — the only reference that is both
+club-invariant and viewpoint-invariant from down-the-line. Every timing constant
+is in seconds rather than frames, so 60/120/240fps footage behaves identically.
 
-Videos and derived artifacts stay out of git — a 240fps clip is hundreds of MB,
-GitHub rejects anything over 100MB, and committed files live in history forever.
+Detector accuracy, measured against 15 hand-labelled 120fps swings:
 
-**`data/labels/` is deliberately tracked.** The hand-labeled P-frames are the
-highest-value artifact here: without ground truth, every change to the event
-detector is a guess. Losing them means re-labeling every clip by hand.
+| Event | mean error |
+|---|---|
+| P4 top of backswing | 0.4 frames |
+| P7 impact | 0.4 frames |
+
+[`PLAN.md`](PLAN.md) has the full architecture, every metric definition, and the
+reasoning behind each decision — including the ones that turned out wrong.
+
+---
+
+## Project layout
+
+```
+app.py            the UI            desktop.py    native Mac window
+golfswing/        the package       scripts/      one-off tools
+tests/            337 tests         data/raw/     your videos (gitignored)
+```
+
+```bash
+.venv/bin/pytest -q
+```
+
+---
+
+## Privacy
+
+Everything is local. Videos, keypoints and the database live in `data/` and are
+gitignored. The **only** thing that ever leaves your machine is the coaching
+note, if you enable it — and that sends six numbers, never your video.
