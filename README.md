@@ -1,5 +1,7 @@
 # Golf Swing Analyzer
 
+[![tests](https://github.com/eurookim/golf-swing-analyzer/actions/workflows/tests.yml/badge.svg)](https://github.com/eurookim/golf-swing-analyzer/actions/workflows/tests.yml)
+
 Film your swing at the range. Drop the clips in. Get measurements of what your
 body actually did — and how this swing compares with the ones you struck well.
 
@@ -40,7 +42,12 @@ individual swings.
 ## Requirements
 
 - **macOS** (the desktop app is Mac-only; the web UI runs anywhere)
-- **Python 3.11+**
+- **Python 3.11+** — **macOS ships 3.9, which is too old.** Check with
+  `python3 --version`. If it is below 3.11, install a current one:
+  `brew install python@3.12`, then use `python3.12` wherever `python3` appears
+  below. Skipping this produces an error blaming *this repo* for a missing
+  `setup.py` — the real cause is that Apple's Python 3.9 carries a pip too old
+  to do editable installs.
 - **ffmpeg** — `brew install ffmpeg`
 - A phone that shoots **60fps or better**. 120fps is much better.
 

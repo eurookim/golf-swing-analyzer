@@ -1,0 +1,40 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # ffmpeg is used to remux clips for browser playback. libgl1 and
+      # libglib2.0-0 are needed by opencv-python, which links against them even
+      # when nothing is displayed — headless runners do not ship them.
+      - name: Install system packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg libgl1 libglib2.0-0
+
+      - name: Install the package
+        run: pip install -e ".[dev]"
+
+      # The pose model is a 30 MB download and the swing footage is not in the
+      # repo, so tests needing either skip here. That is deliberate: everything
+      # that can be checked without them is checked, and -rs lists what was not.
+      - name: Run the suite
+        run: pytest -q -rs

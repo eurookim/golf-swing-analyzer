@@ -1,7 +1,7 @@
 [project]
 name = "golfswing"
 version = "0.1.0"
-description = "Local golf swing video analyzer — named faults + metrics from down-the-line footage"
+description = "Measures what your body did in a golf swing from down-the-line video, and ranks each swing against the ones you struck well"
 requires-python = ">=3.11"
 # Every third-party import in the project. Previously only the first four were
 # declared, so a fresh clone installed cleanly and then crashed on `import
