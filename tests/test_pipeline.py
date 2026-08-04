@@ -1,14 +1,15 @@
 """Tests for golfswing.pipeline — the ingest -> pose -> smooth -> store chain."""
 
-from pathlib import Path
-
 import numpy as np
 import pytest
 
-from golfswing import pipeline, store
+from golfswing import paths, pipeline, pose, store
 
-MODEL = Path("models/pose_landmarker_heavy.task")
-REAL_CLIPS = sorted(Path("data/raw").glob("*.mov")) if Path("data/raw").is_dir() else []
+# Resolved from the package, not the working directory — a bare Path("data/raw")
+# silently becomes an empty list when pytest runs from anywhere but the repo
+# root, so footage-dependent tests would skip while reporting success.
+MODEL = pose.DEFAULT_MODEL
+REAL_CLIPS = sorted(paths.RAW_DIR.glob("*.mov")) if paths.RAW_DIR.is_dir() else []
 
 requires_model = pytest.mark.skipif(
     not MODEL.exists(), reason="pose model not downloaded"

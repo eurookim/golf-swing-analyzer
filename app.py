@@ -23,7 +23,7 @@ import streamlit as st
 from golfswing import (calibrate, coach, db, faults, history, naming,
                        pipeline, pose, preview, skeleton, store, ui)
 
-from golfswing.paths import OUTPUTS_DIR, PROCESSED_DIR, RAW_DIR
+from golfswing.paths import PROCESSED_DIR, RAW_DIR
 VIDEO_SUFFIXES = (".mov", ".MOV", ".mp4", ".MP4", ".m4v")
 
 METRIC_LABELS = {

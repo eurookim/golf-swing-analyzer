@@ -131,6 +131,13 @@ Detector accuracy, measured against 15 hand-labelled 120fps swings:
 | P4 top of backswing | 0.4 frames |
 | P7 impact | 0.4 frames |
 
+Those labels are in the repo, in `data/labels/` — frame numbers only, no video.
+They are checked in deliberately: without ground truth every change to the event
+detector is a guess, and re-labelling by hand is the expensive part. You will
+have labels for swings you do not have footage of. That is expected — they score
+the detector, they are not your data, and nothing reads them unless the matching
+clip is present.
+
 [`PLAN.md`](PLAN.md) has the full architecture, every metric definition, and the
 reasoning behind each decision — including the ones that turned out wrong.
 
@@ -141,7 +148,7 @@ reasoning behind each decision — including the ones that turned out wrong.
 ```
 app.py            the UI            desktop.py    native Mac window
 golfswing/        the package       scripts/      one-off tools
-tests/            337 tests         data/raw/     your videos (gitignored)
+tests/            341 tests         data/raw/     your videos (gitignored)
 ```
 
 ```bash
