@@ -15,6 +15,18 @@ set -euo pipefail
 PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP="$HOME/Applications/Golf Swing Analyzer.app"
 
+# Check the venv before building anything. The launcher execs .venv/bin/python
+# directly, and a Finder-launched app has nowhere to print an error — without
+# this the app bounces once in the Dock and quits, saying nothing at all.
+if [ ! -x "$PROJECT/.venv/bin/python" ]; then
+    echo "No virtualenv found at $PROJECT/.venv" >&2
+    echo >&2
+    echo "Set one up first:" >&2
+    echo "    python3 -m venv .venv" >&2
+    echo "    .venv/bin/pip install -e \".[dev]\"" >&2
+    exit 1
+fi
+
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 

@@ -27,11 +27,25 @@ MODEL_URL = (
 
 
 def ensure_model(path: Path = DEFAULT_MODEL) -> Path:
-    """Download the pose model if it is not already on disk (~30 MB, once)."""
+    """Download the pose model if it is not already on disk (~30 MB, once).
+
+    Downloads to a scratch file and renames only on success. Writing straight
+    to the destination meant an interrupted download — Ctrl-C, a dropped
+    connection, a laptop sleeping — left a truncated file at the real path.
+    `path.exists()` was then true forever, so every later run reused it and
+    MediaPipe raised only "Unable to open zip archive". The install was
+    permanently broken and the fix (delete the file) was undiscoverable.
+    """
     path = Path(path)
-    if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        urllib.request.urlretrieve(MODEL_URL, path)
+    if path.exists():
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    scratch = path.with_name(path.name + ".part")
+    try:
+        urllib.request.urlretrieve(MODEL_URL, scratch)
+        scratch.replace(path)
+    finally:
+        scratch.unlink(missing_ok=True)
     return path
 
 

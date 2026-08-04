@@ -405,8 +405,10 @@ def explain(found: list[Standing], clip: str) -> str:
 
     if not available():                              # pragma: no cover
         raise RuntimeError(
-            "No Anthropic credentials found. Either export ANTHROPIC_API_KEY, "
-            "or run `ant auth login`."
+            "No Anthropic API key found. The coaching note is optional — "
+            "everything else works without it.\n\n"
+            "To enable it, copy .env.example to .env and paste a key from "
+            "console.anthropic.com into it."
         )
 
     client = anthropic.Anthropic()

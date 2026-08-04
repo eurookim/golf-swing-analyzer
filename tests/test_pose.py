@@ -72,6 +72,63 @@ class TestAgainstRealFootage:
         assert np.nanmean(torso) > 0.9
 
 
+class TestModelDownloadIsAtomic:
+    """A download killed partway must not leave a file at the real path.
+
+    Writing straight to the destination meant an interrupted download — Ctrl-C,
+    a dropped connection, a laptop sleeping — left a truncated .task there.
+    `path.exists()` was then true forever, so every later run reused the broken
+    file and MediaPipe raised only "Unable to open zip archive", which names
+    nothing the user can act on. The install was permanently dead and the fix
+    (delete the file) was undiscoverable.
+    """
+
+    def test_an_interrupted_download_leaves_no_model(self, tmp_path, monkeypatch):
+        target = tmp_path / "models" / "pose_landmarker_heavy.task"
+
+        def die_partway(url, filename):
+            Path(filename).write_bytes(b"\x00" * 4096)   # 4 KB of 30 MB
+            raise ConnectionResetError("connection dropped")
+
+        monkeypatch.setattr("urllib.request.urlretrieve", die_partway)
+        with pytest.raises(ConnectionResetError):
+            pose.ensure_model(target)
+        assert not target.exists()
+
+    def test_an_interrupted_download_leaves_no_scratch_file(self, tmp_path, monkeypatch):
+        """Nothing half-written may survive, under any name."""
+        target = tmp_path / "models" / "pose_landmarker_heavy.task"
+
+        def die_partway(url, filename):
+            Path(filename).write_bytes(b"\x00" * 4096)
+            raise TimeoutError("read timed out")
+
+        monkeypatch.setattr("urllib.request.urlretrieve", die_partway)
+        with pytest.raises(TimeoutError):
+            pose.ensure_model(target)
+        assert list(target.parent.iterdir()) == []
+
+    def test_a_completed_download_is_kept(self, tmp_path, monkeypatch):
+        target = tmp_path / "models" / "pose_landmarker_heavy.task"
+        monkeypatch.setattr(
+            "urllib.request.urlretrieve",
+            lambda url, filename: Path(filename).write_bytes(b"the whole model"),
+        )
+        assert pose.ensure_model(target) == target
+        assert target.read_bytes() == b"the whole model"
+
+    def test_an_existing_model_is_not_redownloaded(self, tmp_path, monkeypatch):
+        target = tmp_path / "pose_landmarker_heavy.task"
+        target.write_bytes(b"already here")
+
+        def fail(url, filename):
+            raise AssertionError("should not have downloaded")
+
+        monkeypatch.setattr("urllib.request.urlretrieve", fail)
+        assert pose.ensure_model(target) == target
+        assert target.read_bytes() == b"already here"
+
+
 class TestTrackingTimestamps:
     """MediaPipe VIDEO mode requires strictly increasing integer milliseconds.
 

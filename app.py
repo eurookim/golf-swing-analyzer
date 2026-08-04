@@ -307,6 +307,11 @@ SECONDS_PER_CLIP = 22          # measured on a 2.4s 120fps clip
 
 
 def page_import(conn):
+    # data/raw is gitignored, so a fresh clone does not contain it. Without
+    # this the page told a first-time user to drop clips into a path that did
+    # not exist yet — and Finder cannot open a folder that is not there.
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+
     st.markdown(
         ui.heading("Add swings",
                    f"Drop clips into {RAW_DIR} — from Photos, AirDrop, anywhere."),
