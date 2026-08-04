@@ -47,7 +47,7 @@ individual swings.
 ## Setup
 
 ```bash
-git clone https://github.com/YOURNAME/golf-swing-analyzer.git
+git clone https://github.com/eurookim/golf-swing-analyzer.git
 cd golf-swing-analyzer
 
 python3 -m venv .venv
