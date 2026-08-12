@@ -13,6 +13,7 @@ coaching — the precision-theater failure mode with a friendlier voice.
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -199,11 +200,20 @@ def standings(rows: list[dict], clip: str) -> list[Standing]:
 
     found = []
     for name, meta in COACHING_METRICS.items():
+        # metrics.py reports a missing landmark as NaN, not None, so an `is None`
+        # check alone lets a failed measurement through. NaN then compares False
+        # against everything: `sum(1 for p in peers if p > nan)` is 0, so the
+        # metric that could not be measured would rank first of the group.
         value = subject.get(name)
-        if value is None:
+        if value is None or not math.isfinite(value):
             continue
 
-        peers = [r[name] for r in baseline if r.get(name) is not None]
+        # Same reason on the peer side — a NaN in `peers` makes sorted() order
+        # depend on input order, corrupting _median() for every clip.
+        peers = [
+            r[name] for r in baseline
+            if r.get(name) is not None and math.isfinite(r[name])
+        ]
 
         # A tagged subject is not in its own baseline, so it has to be added to
         # the denominator — otherwise a swing below every normal ranks "17 of 16".

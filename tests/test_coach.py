@@ -128,6 +128,35 @@ class TestStandings:
 
         assert "tempo_ratio" not in metrics
 
+    def test_nan_metrics_are_skipped_like_missing_ones(self):
+        """metrics.py signals a missing landmark with NaN, not None.
+
+        NaN compares False against everything, so `sum(1 for p in peers if
+        p > value)` is 0 and an unmeasurable metric would be reported to the
+        golfer as the best of the group.
+        """
+        rows = [_row(f"c{i}", tempo_ratio=float("nan")) for i in range(8)]
+
+        metrics = {s.metric for s in coach.standings(rows, "c0")}
+
+        assert "tempo_ratio" not in metrics
+
+    def test_a_nan_peer_does_not_corrupt_the_baseline(self):
+        """One unmeasurable swing must not shift everyone else's median.
+
+        NaN in `peers` also makes sorted() order-dependent, so _median() would
+        vary with row order rather than with the data.
+        """
+        rows = [_row(f"c{i}", hip_depth_change=float(i)) for i in range(7)]
+        rows.append(_row("c7", hip_depth_change=float("nan")))
+
+        hip = next(s for s in coach.standings(rows, "c0")
+                   if s.metric == "hip_depth_change")
+
+        assert hip.median == pytest.approx(3.0), "median of 0..6, NaN excluded"
+        assert hip.n_peers == 7, "the NaN swing is not a peer"
+        assert hip.rank == 7, "lowest of the seven measurable swings"
+
     def test_unknown_clip_raises(self):
         with pytest.raises(KeyError):
             coach.standings([_row("a")], "nope")
