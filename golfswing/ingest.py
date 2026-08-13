@@ -108,6 +108,43 @@ def probe(path: Path | str) -> VideoInfo:
     )
 
 
+def frames_in_range(path: Path | str, lo: int, hi: int) -> list[np.ndarray]:
+    """Upright frames for indices ``lo..hi`` inclusive, clamped to the clip.
+
+    Decodes forward rather than seeking. ``CAP_PROP_POS_FRAMES`` can land on the
+    wrong frame with inter-frame compression, which would show one frame while
+    the caller records a different index — and the scrubber's whole job is that
+    the number and the picture agree.
+
+    Cheap enough because the caller decodes one window and reuses it: the cost
+    is one pass to ``hi``, not one pass per frame examined.
+    """
+    info = probe(path)
+    lo = max(0, lo)
+    if hi < lo:
+        return []
+
+    cap = cv2.VideoCapture(str(info.path))
+    if not cap.isOpened():
+        raise RuntimeError(f"could not open {info.path}")
+    try:
+        cap.set(cv2.CAP_PROP_ORIENTATION_AUTO, 0)
+    except cv2.error:
+        pass
+
+    frames: list[np.ndarray] = []
+    try:
+        for index in range(hi + 1):
+            ok, frame = cap.read()
+            if not ok:
+                break
+            if index >= lo:
+                frames.append(apply_rotation(frame, info.rotation))
+    finally:
+        cap.release()
+    return frames
+
+
 def read_frames_with_times(
     path: Path | str,
 ) -> tuple[np.ndarray, list[np.ndarray]]:

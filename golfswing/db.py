@@ -16,6 +16,7 @@ from pathlib import Path
 from golfswing.paths import DB_PATH
 from typing import Any
 
+from golfswing.events import SwingEvents
 from golfswing.metrics import SwingMetrics
 
 DEFAULT_DB_PATH = DB_PATH
@@ -36,10 +37,26 @@ CREATE TABLE IF NOT EXISTS swings (
     fault_tag   TEXT,
     outcome     TEXT,
     p1 INTEGER, p4 INTEGER, p7 INTEGER, p10 INTEGER,
+    events_source TEXT NOT NULL DEFAULT 'detected',
     {', '.join(f'{name} REAL' for name in METRIC_COLUMNS)}
 );
 CREATE INDEX IF NOT EXISTS swings_by_club_date ON swings (club, date);
 """
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Bring an existing database up to the current schema.
+
+    `CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists, so
+    a column added to _SCHEMA never reaches a database that predates it. Every
+    real database here predates events_source.
+    """
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(swings)")}
+    if "events_source" not in columns:
+        conn.execute(
+            "ALTER TABLE swings "
+            "ADD COLUMN events_source TEXT NOT NULL DEFAULT 'detected'"
+        )
 
 
 def connect(path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
@@ -54,6 +71,7 @@ def connect(path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    _migrate(conn)
     conn.commit()
     return conn
 
@@ -106,6 +124,36 @@ def save_swing(
     if existing and existing["outcome"]:
         conn.execute("UPDATE swings SET outcome = ? WHERE clip = ?",
                      (existing["outcome"], clip))
+    conn.commit()
+
+
+def update_events(
+    conn: sqlite3.Connection,
+    clip: str,
+    events: SwingEvents,
+    metrics: SwingMetrics,
+) -> None:
+    """Replace one swing's event frames and the metrics derived from them.
+
+    Deliberately not `save_swing`: that uses INSERT OR REPLACE, which rewrites
+    the whole row and blanks anything not listed. A correction must leave
+    `outcome`, `fault_tag`, `club` and `date` untouched — losing a fault tag
+    would quietly pull a deliberately-botched swing into the baseline. An UPDATE
+    cannot blank a column it does not name.
+    """
+    values = metrics.as_dict()
+    assignments = ", ".join(f"{name} = ?" for name in METRIC_COLUMNS)
+    cursor = conn.execute(
+        f"UPDATE swings SET p1 = ?, p4 = ?, p7 = ?, p10 = ?, {assignments}, "
+        "events_source = 'corrected' WHERE clip = ?",
+        (
+            events.p1, events.p4, events.p7, events.p10,
+            *(_nullable(values[name]) for name in METRIC_COLUMNS),
+            clip,
+        ),
+    )
+    if cursor.rowcount == 0:
+        raise KeyError(f"no swing named {clip!r}")
     conn.commit()
 
 

@@ -1,5 +1,7 @@
 """Tests for golfswing.db — swing history."""
 
+import sqlite3
+
 import numpy as np
 import pytest
 
@@ -195,3 +197,95 @@ class TestOutcome:
         db.save_swing(conn, **_record(clip="a"))      # re-sync
 
         assert db.load_swings(conn)[0]["outcome"] == "flushed"
+
+
+def _insert_swing(conn, clip, *, club="7iron", fault_tag=None, date="2026-07-29"):
+    conn.execute(
+        "INSERT INTO swings (clip, date, club, fault_tag) VALUES (?, ?, ?, ?)",
+        (clip, date, club, fault_tag),
+    )
+    conn.commit()
+
+
+class TestMigration:
+    """`CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists,
+    so a column added to _SCHEMA never reaches a database that predates it —
+    and every real database here predates events_source."""
+
+    def test_adds_events_source_to_a_legacy_database(self, tmp_path):
+        path = tmp_path / "legacy.sqlite"
+        legacy = sqlite3.connect(path)
+        legacy.execute(
+            "CREATE TABLE swings (clip TEXT PRIMARY KEY, date TEXT NOT NULL, "
+            "club TEXT, angle TEXT, fps REAL, fault_tag TEXT, outcome TEXT, "
+            "p1 INTEGER, p4 INTEGER, p7 INTEGER, p10 INTEGER, "
+            + ", ".join(f"{name} REAL" for name in db.METRIC_COLUMNS) + ")"
+        )
+        legacy.execute("INSERT INTO swings (clip, date) VALUES ('old', '2026-01-01')")
+        legacy.commit()
+        legacy.close()
+
+        conn = db.connect(path)
+
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(swings)")}
+        assert "events_source" in columns
+        row = conn.execute(
+            "SELECT events_source FROM swings WHERE clip = 'old'").fetchone()
+        assert row["events_source"] == "detected", \
+            "existing rows are detected, not corrected"
+
+    def test_is_idempotent(self, tmp_path):
+        path = tmp_path / "twice.sqlite"
+        db.connect(path).close()
+
+        conn = db.connect(path)
+
+        columns = [row["name"] for row in conn.execute("PRAGMA table_info(swings)")]
+        assert columns.count("events_source") == 1
+
+
+class TestUpdateEvents:
+    def test_writes_frames_and_metrics(self, tmp_path):
+        conn = db.connect(tmp_path / "s.sqlite")
+        _insert_swing(conn, "c1")
+        events = SwingEvents(p1=5, p4=50, p7=90, p10=120)
+
+        db.update_events(conn, "c1", events, _metrics(tempo_ratio=2.5))
+
+        row = conn.execute("SELECT * FROM swings WHERE clip = 'c1'").fetchone()
+        assert (row["p1"], row["p4"], row["p7"], row["p10"]) == (5, 50, 90, 120)
+        assert row["tempo_ratio"] == pytest.approx(2.5)
+        assert row["events_source"] == "corrected"
+
+    def test_preserves_everything_it_does_not_own(self, tmp_path):
+        """The reason this is not save_swing: INSERT OR REPLACE blanks unlisted
+        columns, and losing a fault_tag would silently corrupt the baseline."""
+        conn = db.connect(tmp_path / "s.sqlite")
+        _insert_swing(conn, "c1", club="driver", fault_tag="early_extension",
+                      date="2026-07-01")
+        conn.execute("UPDATE swings SET outcome = 'flushed' WHERE clip = 'c1'")
+
+        db.update_events(conn, "c1", SwingEvents(1, 2, 3, 4), _metrics())
+
+        row = conn.execute("SELECT * FROM swings WHERE clip = 'c1'").fetchone()
+        assert row["outcome"] == "flushed"
+        assert row["fault_tag"] == "early_extension"
+        assert row["club"] == "driver"
+        assert row["date"] == "2026-07-01"
+
+    def test_stores_nan_as_null(self, tmp_path):
+        conn = db.connect(tmp_path / "s.sqlite")
+        _insert_swing(conn, "c1")
+
+        db.update_events(conn, "c1", SwingEvents(1, 2, 3, 4),
+                         _metrics(tempo_ratio=float("nan")))
+
+        row = conn.execute(
+            "SELECT tempo_ratio FROM swings WHERE clip = 'c1'").fetchone()
+        assert row["tempo_ratio"] is None
+
+    def test_rejects_an_unknown_clip(self, tmp_path):
+        conn = db.connect(tmp_path / "s.sqlite")
+
+        with pytest.raises(KeyError):
+            db.update_events(conn, "nope", SwingEvents(1, 2, 3, 4), _metrics())
