@@ -109,3 +109,48 @@ class TestFrameTimes:
         _, frames = ingest.read_frames_with_times(rotated_clip)
         # stored 320x240 landscape, rotation -90 -> displays 240x320 portrait
         assert frames[0].shape[:2] == (320, 240)
+
+
+class TestFramesInRange:
+    """A scrub window, decoded forward.
+
+    ``CAP_PROP_POS_FRAMES`` can land on the wrong frame with inter-frame
+    compression, which would show one picture while the caller records a
+    different index. The scrubber's whole job is that the two agree, so these
+    tests pin the window against the full decode rather than against a count.
+    """
+
+    def test_returns_the_requested_window(self, cfr_clip):
+        frames = ingest.frames_in_range(cfr_clip, 10, 14)
+
+        assert len(frames) == 5
+
+    def test_clamps_to_the_clip(self, cfr_clip):
+        _, whole = ingest.read_frames_with_times(cfr_clip)
+
+        frames = ingest.frames_in_range(cfr_clip, -5, 10_000)
+
+        assert len(frames) == len(whole), "clamped at both ends, not an error"
+
+    def test_is_upright(self, rotated_clip):
+        """Same rotation handling as the full read — a sideways scrubber is useless."""
+        _, whole = ingest.read_frames_with_times(rotated_clip)
+
+        windowed = ingest.frames_in_range(rotated_clip, 3, 3)
+
+        assert windowed[0].shape == whole[3].shape
+
+    def test_matches_the_full_read(self, cfr_clip):
+        """The window must be the same pixels the full decode produces."""
+        _, whole = ingest.read_frames_with_times(cfr_clip)
+
+        windowed = ingest.frames_in_range(cfr_clip, 7, 9)
+
+        for offset, frame in enumerate(windowed):
+            assert np.array_equal(frame, whole[7 + offset]), f"frame {7 + offset} differs"
+
+    def test_empty_when_window_is_past_the_end(self, cfr_clip):
+        assert ingest.frames_in_range(cfr_clip, 5_000, 6_000) == []
+
+    def test_empty_when_the_window_is_inverted(self, cfr_clip):
+        assert ingest.frames_in_range(cfr_clip, 20, 10) == []
