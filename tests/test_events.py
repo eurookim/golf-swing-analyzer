@@ -328,3 +328,62 @@ class TestDetectEvents:
         """A clip of someone standing still has no impact to find."""
         with pytest.raises(events.NoSwingDetectedError):
             events.detect_events(_sequence(_still(120)))
+
+
+class TestRefineImpactOrdering:
+    """The refinement window must never reach back to the top.
+
+    `p1 < p4 < p7 < p10` is relied on throughout, but nothing enforces it — it
+    is an emergent property of the signals. When it breaks, `metrics.tempo_ratio`
+    divides by a non-positive downswing and returns NaN, so the failure is
+    laundered into an ordinary missing metric instead of an error.
+    """
+
+    def _with_height(self, height, fps):
+        n = len(height)
+        lm = np.zeros((n, 33, 4))
+        lm[:, :, 3] = 1.0
+        lm[:, L_WR, 1] = 1.0 - height
+        lm[:, R_WR, 1] = 1.0 - height
+        return _sequence(lm, fps=fps)
+
+    def test_never_returns_a_frame_at_or_before_the_top(self):
+        """At 30fps the refine half-window (4 frames) equals the minimum
+        downswing gap (4), so the earliest window starts exactly ON the top.
+        A height minimum sitting there must not be selectable as impact."""
+        p4, coarse = 20, 24
+        height = np.full(60, 0.5)
+        height[p4] = 0.0            # the trap: the window's lowest point is the top
+
+        result = events._refine_impact(self._with_height(height, 30.0), coarse, p4)
+
+        assert result > p4
+
+    def test_never_returns_a_frame_before_the_top(self):
+        """Below ~8fps the window reaches back PAST the top, not just onto it."""
+        p4, coarse = 20, 21
+        height = np.full(60, 0.5)
+        height[p4 - 1] = 0.0
+
+        result = events._refine_impact(self._with_height(height, 8.0), coarse, p4)
+
+        assert result > p4
+
+    def test_still_picks_the_hand_height_minimum_inside_the_window(self):
+        """The floor must not disturb the normal case it is guarding."""
+        p4, coarse = 20, 40
+        height = np.full(60, 0.5)
+        height[38] = 0.1
+
+        result = events._refine_impact(self._with_height(height, 120.0), coarse, p4)
+
+        assert result == 38
+
+    def test_detected_events_are_strictly_increasing_at_30fps(self):
+        """The end-to-end invariant, at the frame rate where the window can
+        reach the top. 30fps is ordinary consumer video."""
+        sequence = _sequence(_synthetic_swing(), fps=30.0)
+
+        found = events.detect_events(sequence)
+
+        assert found.p1 < found.p4 < found.p7 < found.p10

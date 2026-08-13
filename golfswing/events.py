@@ -166,11 +166,20 @@ def _find_top(height: np.ndarray) -> int | None:
     return int(peaks[0]) if len(peaks) else None
 
 
-def _refine_impact(sequence: PoseSequence, coarse: int) -> int:
+def _refine_impact(sequence: PoseSequence, coarse: int, p4: int) -> int:
     """Sharpen a coarse impact estimate using the hand-height minimum.
 
     The hands reach the bottom of the swing arc AT contact — a geometric
     coincidence rather than a rotational one, which is why it does not lag.
+
+    The search is floored just after ``p4``. Without it the window is
+    ``coarse - half``, and while ``coarse`` is always at least
+    ``DOWNSWING_MIN_SECONDS`` past the top, both offsets carry a ``max()`` floor
+    for short clips — at 30fps they are both 4 frames, so the window starts
+    exactly ON the top, and below ~8fps it reaches past it. Nothing else in this
+    module enforces ``p4 < p7``; it is an emergent property of the signals, and
+    when it breaks `metrics.tempo_ratio` divides by a non-positive downswing and
+    returns NaN, laundering the failure into an ordinary missing metric.
 
     Measured against 15 hand-labeled 120fps clips:
 
@@ -188,7 +197,7 @@ def _refine_impact(sequence: PoseSequence, coarse: int) -> int:
     fps = sequence.fps if sequence.fps > 0 else 60.0
     half = max(2, int(round(IMPACT_REFINE_SECONDS * fps)))
 
-    lo = max(0, coarse - half)
+    lo = max(p4 + 1, coarse - half)
     hi = min(len(height), coarse + half + 1)
     window = height[lo:hi]
     if not np.any(np.isfinite(window)):
@@ -272,7 +281,7 @@ def detect_events(sequence: PoseSequence) -> SwingEvents:
 
     # The speed peak lags contact — the body keeps accelerating through release.
     # The shoulder line bottoms AT contact, so refine against that.
-    p7 = _refine_impact(sequence, coarse)
+    p7 = _refine_impact(sequence, coarse, p4)
 
     # P1: the last frame the hands are still, walking BACK from the top.
     #
