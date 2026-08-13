@@ -157,10 +157,21 @@ impact frame at or before the top of the backswing, breaking the ordering
 invariant. `tempo_ratio` then returns NaN and the failure is laundered into an
 ordinary missing metric.
 
-That is a likely contributor to the bad P7s motivating this feature. It should be
-fixed separately — it is a detector bug, not a UI gap — but it is the natural
-first use of the labels this feature will produce: fix it, run
-`evaluate_events.py` before and after, and see whether the P7 error actually drops.
+**Corrected after measuring, 2026-08-13.** The guess that this contributes to the
+bad P7s motivating this feature was wrong. `coarse` is always at least
+`DOWNSWING_MIN_SECONDS` past `p4`, and that gap exceeds `IMPACT_REFINE_SECONDS`
+at every ordinary frame rate — so the window cannot reach `p4` at 50, 60, 120 or
+240fps. It can only reach it where the two `max()` floors invert the relationship:
+exactly at 30fps (both offsets round to 4 frames), and below ~8fps where the
+window reaches past the top. The clips here are 60 and 120fps, so this has never
+fired on them.
+
+It was fixed anyway — `lo = max(p4 + 1, coarse - half)`, since nothing else
+enforces `p4 < p7` — and `evaluate_events.py` scored identically before and
+after (P1 1.8, P4 0.4, P7 0.7, P10 0.9 mean abs over 19 clips), confirming it
+changed nothing on this footage. It is a latent-bug guard for 30fps imports, not
+a P7 accuracy improvement. **The real cause of the bad P7s is still unknown**,
+and finding it remains the natural first use of the labels this feature produces.
 
 ## Deferred: fitting the detector to labels
 

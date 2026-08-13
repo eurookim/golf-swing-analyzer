@@ -1,5 +1,14 @@
 # Event Frame Correction Implementation Plan
 
+> **Executed and merged 2026-08-13.** Five defects found against the real code
+> during execution have been corrected in place, so this document matches what
+> shipped: `read_frames_with_times` returns `(times, frames)` and the tests
+> unpacked it backwards; `PoseSequence` requires four landmark channels, not
+> three; `window_bounds`'s sample implementation contradicted two of its own four
+> tests (the tests were right); the database is `data/swings.db`, not
+> `data/history.sqlite`; and `tests/test_db.py` already had a `_metrics` helper
+> with a different signature. Baseline test count was 316, not 318.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let the user scrub to the correct frame for any swing event in the app, recompute that swing's metrics from the cached landmarks, and record the choice as verified ground truth.
@@ -72,7 +81,7 @@ def test_frames_in_range_is_upright(tmp_path):
     """Same rotation handling as the full read — a sideways scrubber is useless."""
     video = _make_video(tmp_path, n_frames=10, width=40, height=20)
 
-    whole, _ = ingest.read_frames_with_times(video)
+    _, whole = ingest.read_frames_with_times(video)
     windowed = ingest.frames_in_range(video, 3, 3)
 
     assert windowed[0].shape == whole[3].shape
@@ -82,7 +91,7 @@ def test_frames_in_range_matches_the_full_read(tmp_path):
     """The window must be the same pixels the full decode produces."""
     video = _make_video(tmp_path, n_frames=20)
 
-    whole, _ = ingest.read_frames_with_times(video)
+    _, whole = ingest.read_frames_with_times(video)
     windowed = ingest.frames_in_range(video, 7, 9)
 
     for offset, frame in enumerate(windowed):
@@ -166,7 +175,7 @@ Expected: PASS, 5 tests
 - [ ] **Step 5: Run the suite**
 
 Run: `python3 -m pytest -q --ignore=tests/test_pipeline.py --ignore=tests/test_pose.py`
-Expected: PASS (318 before this task, 323 after)
+Expected: PASS (316 before this task, 322 after)
 
 - [ ] **Step 6: Commit**
 
@@ -288,15 +297,13 @@ def _insert_swing(conn, clip, *, club="7iron", fault_tag=None, date="2026-07-29"
         (clip, date, club, fault_tag),
     )
     conn.commit()
-
-
-def _metrics(events, **overrides):
-    values = {name: 1.0 for name in db.METRIC_COLUMNS}
-    values.update(overrides)
-    return SwingMetrics(events=events, **values)
 ```
 
-with `import sqlite3`, `import pytest`, `from golfswing.events import SwingEvents`, and `from golfswing.metrics import SwingMetrics` at the top as needed.
+`tests/test_db.py` already has a `_metrics(**overrides)` helper that binds a
+module-level `EVENTS`. Reuse it rather than redefining it with a different
+signature — `update_events` takes the events separately, so the metrics object's
+own `.events` is not what gets written. Add `import sqlite3` at the top;
+`pytest`, `SwingEvents` and `SwingMetrics` are already imported there.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -428,7 +435,7 @@ from golfswing.sequence import PoseSequence
 def _sequence(n_frames=200):
     rng = np.random.default_rng(0)
     return PoseSequence(
-        landmarks=rng.random((n_frames, 33, 3)),
+        landmarks=rng.random((n_frames, 33, 4)),
         times=np.arange(n_frames) / 120.0,
         fps=120.0,
         source="test.mov",
@@ -709,18 +716,16 @@ CORRECTION_WINDOW_FRAMES = 15
 def window_bounds(
     current: int, n_frames: int, window: int = CORRECTION_WINDOW_FRAMES
 ) -> tuple[int, int]:
-    """Inclusive frame range to scrub, centred on ``current``.
+    """Inclusive frame range to scrub, centred on ``current`` and clamped.
 
-    Keeps the full width where the clip allows it rather than shrinking near the
-    ends — a mis-detected impact often sits close to the end of a trimmed clip,
-    which is exactly where a narrowing window would stop showing the right frame.
+    Stays centred on the detector's own pick rather than sliding inward to keep
+    a constant width near the ends. The error being corrected is centred on that
+    pick, so a shifted window would put the frame you are looking for off to one
+    side — and a clip trimmed close to the finish is exactly where P10 lands.
     """
     if n_frames <= 0:
         return (0, 0)
-    width = 2 * window
-    lo = max(0, min(current - window, n_frames - 1 - width))
-    hi = min(n_frames - 1, lo + width)
-    return (lo, hi)
+    return (max(0, current - window), min(n_frames - 1, current + window))
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
@@ -822,7 +827,7 @@ This is the first task that exercises the feature end to end on real video and a
 - [ ] **Step 1: Back up the database**
 
 ```bash
-cp data/history.sqlite data/history.sqlite.bak
+cp data/swings.db data/swings.db.bak
 ```
 
 Do this before the first run against real data. The migration is additive and tested, but a one-command undo costs nothing.
@@ -892,6 +897,8 @@ git commit -m "Document correcting event frames from the app"
 
 ---
 
-## Follow-up, not in this plan
+## Follow-up — done, with a different result than expected
 
-**The `_refine_impact` p4-floor bug.** `events.py` computes its refinement window as `lo = max(0, coarse - half)`, with no floor at `p4`, so it can select an impact frame at or before the top of the backswing — breaking the ordering invariant and laundering the failure into a NaN tempo ratio. It is a detector bug, separate from this feature, and it is the natural first use of the labels this feature produces: fix it, re-run `evaluate_events.py`, and see whether P7 error actually drops.
+**The `_refine_impact` p4-floor bug.** Fixed 2026-08-13 (`lo = max(p4 + 1, coarse - half)`), but the expectation behind it was wrong. The window can only reach `p4` at exactly 30fps and below ~8fps, where the `max()` floors on `DOWNSWING_MIN_SECONDS` and `IMPACT_REFINE_SECONDS` invert their normal relationship; at 50/60/120/240fps it provably cannot. These clips are 60 and 120fps, and `evaluate_events.py` scored identically before and after the fix. It is a latent-bug guard for 30fps imports, not a P7 accuracy improvement.
+
+**Still open: what actually causes the bad P7s.** That remains the natural first use of the labels this feature produces.
