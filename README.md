@@ -97,6 +97,23 @@ those — *"more than the ones you struck well"* rather than *"more than usual"*
 **4. Look.** Video, the six measurements with how each compares, key frames with
 the skeleton drawn on, and a written note if you set up a key.
 
+**5. Correct a frame, if one looks wrong.** The detector picks P1, P4, P7 and
+P10 automatically, and P7 (impact) is wrong often enough to matter. When it is,
+every metric derived from it is wrong too — quietly, because a misplaced impact
+frame usually yields a plausible number rather than an obvious failure.
+
+Under **Event frames look wrong?** on the swing page, pick the event, scrub to
+the right frame, and confirm. The swing's metrics are recomputed from the cached
+keypoints, so it is instant — nothing re-runs pose estimation. A corrected swing
+is marked as such, so a hand-set frame is never mistaken for a detected one.
+
+Each correction is also saved as verified ground truth, which is the point:
+deciding which frame is right is the expensive part, and you have just done it
+by hand. `scripts/evaluate_events.py` scores the detector against exactly those
+verified labels, so labelling stops being a separate chore and becomes a side
+effect of noticing. `scripts/label_swing.py` is still there for labelling in
+bulk outside the app.
+
 ---
 
 ## Fault detection, and why it's off
