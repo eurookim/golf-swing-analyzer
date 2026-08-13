@@ -284,7 +284,15 @@ def _key_frames(clip, row, found):
     if row["events_source"] == "corrected":
         st.caption("Event frames were set by hand.")
 
-    _correction_control(clip, video, sequence, events)
+    # Rendered here rather than beside the button that sets it: st.rerun()
+    # discards the run it is called from, so anything written before it is never
+    # painted. The expander is also collapsed by default on the new run, so the
+    # confirmation has to live outside it to be seen at all.
+    flash = st.session_state.pop("correction_flash", None)
+    if flash:
+        st.success(flash)
+
+    _correction_control(clip, video, sequence, events, row["events_source"])
 
 
 @st.cache_data(show_spinner="Decoding frames…")
@@ -293,7 +301,7 @@ def _scrub_window(video_path: str, lo: int, hi: int) -> list:
     return ingest.frames_in_range(video_path, lo, hi)
 
 
-def _correction_control(clip, video, sequence, events):
+def _correction_control(clip, video, sequence, events, events_source):
     """Scrub to the right frame for an event, in the app.
 
     Collapsed by default: this is a correction path, not the main flow. The
@@ -332,9 +340,13 @@ def _correction_control(clip, video, sequence, events):
         # which is what this view wants — the scrubber shows the pose so you can
         # judge the frame, not its deviation from a baseline.
         frame = skeleton.draw(window[chosen - lo], sequence.landmarks[chosen], {})
+        # Only the detector can have a "pick". Once these frames were set by
+        # hand, `current` is the golfer's own choice, and crediting it to the
+        # detector would misreport where the number came from.
+        origin = ("  (detector's pick)" if events_source == "detected"
+                  else "  (current)")
         st.image(frame[:, :, ::-1],                        # BGR -> RGB
-                 caption=f"frame {chosen}"
-                         + ("  (detector's pick)" if chosen == current else ""))
+                 caption=f"frame {chosen}" + (origin if chosen == current else ""))
 
         candidate = correction.corrected(events, key, chosen)
         try:
@@ -346,7 +358,10 @@ def _correction_control(clip, video, sequence, events):
         if st.button(f"Use frame {chosen} as {key.upper()}", type="primary",
                      key=f"correct_apply_{clip}_{key}"):
             correction.apply_correction(_conn(), clip, candidate)
-            st.success(f"{key.upper()} set to frame {chosen}; metrics recomputed.")
+            st.session_state["correction_flash"] = (
+                f"{key.upper()} set to frame {chosen}; metrics recomputed "
+                "and the frame saved as verified ground truth."
+            )
             st.rerun()
 
 
