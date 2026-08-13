@@ -26,6 +26,10 @@ from golfswing.paths import LABELS_DIR, PROCESSED_DIR
 
 EVENT_KEYS = ("p1", "p4", "p7", "p10")
 
+# At 120fps this is an eighth of a second either side of the detector's pick:
+# wide enough to contain its error, narrow enough to scrub without hunting.
+CORRECTION_WINDOW_FRAMES = 15
+
 
 class OutOfOrderError(ValueError):
     """The corrected frames do not run address → top → impact → finish."""
@@ -50,6 +54,21 @@ def check_order(events: SwingEvents) -> None:
             "events must run address → top → impact → finish, got "
             f"{dict(zip(EVENT_KEYS, frames))}"
         )
+
+
+def window_bounds(
+    current: int, n_frames: int, window: int = CORRECTION_WINDOW_FRAMES
+) -> tuple[int, int]:
+    """Inclusive frame range to scrub, centred on ``current`` and clamped.
+
+    Stays centred on the detector's own pick rather than sliding inward to keep
+    a constant width near the ends. The error being corrected is centred on that
+    pick, so a shifted window would put the frame you are looking for off to one
+    side — and a clip trimmed close to the finish is exactly where P10 lands.
+    """
+    if n_frames <= 0:
+        return (0, 0)
+    return (max(0, current - window), min(n_frames - 1, current + window))
 
 
 def apply_correction(

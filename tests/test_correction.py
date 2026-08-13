@@ -164,3 +164,20 @@ class TestCorrected:
     def test_rejects_an_unknown_event(self):
         with pytest.raises(KeyError):
             correction.corrected(SwingEvents(1, 2, 3, 4), "p9", 30)
+
+
+class TestWindowBounds:
+    def test_centres_on_the_current_frame(self):
+        assert correction.window_bounds(100, 300, window=15) == (85, 115)
+
+    def test_clamps_at_the_start(self):
+        assert correction.window_bounds(3, 300, window=15) == (0, 18)
+
+    def test_clamps_at_the_end(self):
+        assert correction.window_bounds(295, 300, window=15) == (280, 299)
+
+    def test_a_clip_shorter_than_the_window_is_fully_covered(self):
+        assert correction.window_bounds(2, 5, window=15) == (0, 4)
+
+    def test_an_empty_clip_does_not_produce_a_negative_range(self):
+        assert correction.window_bounds(0, 0, window=15) == (0, 0)

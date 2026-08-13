@@ -20,8 +20,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 
-from golfswing import (calibrate, coach, db, faults, history, naming,
-                       pipeline, pose, preview, skeleton, store, ui)
+from golfswing import (calibrate, coach, correction, db, faults, history,
+                       ingest, naming, pipeline, pose, preview, skeleton,
+                       store, ui)
 
 from golfswing.paths import PROCESSED_DIR, RAW_DIR
 VIDEO_SUFFIXES = (".mov", ".MOV", ".mp4", ".MP4", ".m4v")
@@ -264,9 +265,8 @@ def _key_frames(clip, row, found):
     try:
         from golfswing.events import SwingEvents
         sequence = store.load_sequence(PROCESSED_DIR / f"{clip}.npz")
-        strip = skeleton.key_frames(
-            video, sequence,
-            SwingEvents(row["p1"], row["p4"], row["p7"], row["p10"]), found)
+        events = SwingEvents(row["p1"], row["p4"], row["p7"], row["p10"])
+        strip = skeleton.key_frames(video, sequence, events, found)
     except (OSError, ValueError) as failure:
         st.caption(f"Could not draw the key frames: {failure}")
         return
@@ -281,6 +281,73 @@ def _key_frames(clip, row, found):
         "or not measured at that point. Address is never coloured: it is the "
         "reference the others are measured from."
     )
+    if row["events_source"] == "corrected":
+        st.caption("Event frames were set by hand.")
+
+    _correction_control(clip, video, sequence, events)
+
+
+@st.cache_data(show_spinner="Decoding frames…")
+def _scrub_window(video_path: str, lo: int, hi: int) -> list:
+    """Decode the scrub window once; the slider then costs nothing to move."""
+    return ingest.frames_in_range(video_path, lo, hi)
+
+
+def _correction_control(clip, video, sequence, events):
+    """Scrub to the right frame for an event, in the app.
+
+    Collapsed by default: this is a correction path, not the main flow. The
+    frame is shown with the skeleton drawn so the choice is made on the same
+    visual evidence the detector used.
+    """
+    with st.expander("Event frames look wrong?"):
+        st.caption(
+            "Pick the right frame and every metric derived from it is "
+            "recomputed. Your choice is also saved as ground truth, so the "
+            "detector can be scored against it."
+        )
+
+        key = st.radio(
+            "Event", correction.EVENT_KEYS, index=2, horizontal=True,
+            format_func=str.upper, key=f"correct_event_{clip}",
+            help="P7 (impact) is the one most often off.",
+        )
+        current = getattr(events, key)
+        lo, hi = correction.window_bounds(current, sequence.n_frames)
+        if hi <= lo:
+            st.caption("This clip is too short to scrub.")
+            return
+
+        chosen = st.slider("Frame", min_value=lo, max_value=hi, value=current,
+                           key=f"correct_frame_{clip}_{key}")
+
+        window = _scrub_window(str(video), lo, hi)
+        if chosen - lo >= len(window):
+            # Decoders routinely return fewer frames than the container
+            # advertises, so a landmark index can outrun the pixels.
+            st.caption(f"The video has no frame {chosen} to show.")
+            return
+
+        # draw() takes a per-part colour map; {} renders every part NEUTRAL,
+        # which is what this view wants — the scrubber shows the pose so you can
+        # judge the frame, not its deviation from a baseline.
+        frame = skeleton.draw(window[chosen - lo], sequence.landmarks[chosen], {})
+        st.image(frame[:, :, ::-1],                        # BGR -> RGB
+                 caption=f"frame {chosen}"
+                         + ("  (detector's pick)" if chosen == current else ""))
+
+        candidate = correction.corrected(events, key, chosen)
+        try:
+            correction.check_order(candidate)
+        except correction.OutOfOrderError as failure:
+            st.warning(str(failure))
+            return
+
+        if st.button(f"Use frame {chosen} as {key.upper()}", type="primary",
+                     key=f"correct_apply_{clip}_{key}"):
+            correction.apply_correction(_conn(), clip, candidate)
+            st.success(f"{key.upper()} set to frame {chosen}; metrics recomputed.")
+            st.rerun()
 
 
 def _coaching_note(found, clip):
