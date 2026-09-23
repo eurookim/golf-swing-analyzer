@@ -74,3 +74,6 @@ data/app.log
 
 # cached browser-playable clips (regenerated from data/raw)
 data/previews/
+
+# graphify knowledge-graph output (regenerate with `graphify .`)
+graphify-out/
