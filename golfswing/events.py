@@ -76,6 +76,11 @@ class SwingEvents:
         return {"P1": self.p1, "P4": self.p4, "P7": self.p7, "P10": self.p10}
 
 
+def _effective_fps(sequence: PoseSequence) -> float:
+    """The sequence's fps, or 60.0 if it is missing or non-positive."""
+    return sequence.fps if sequence.fps > 0 else 60.0
+
+
 def wrist_height(sequence: PoseSequence) -> np.ndarray:
     """Mean hand height per frame, with up as positive.
 
@@ -194,7 +199,7 @@ def _refine_impact(sequence: PoseSequence, coarse: int, p4: int) -> int:
     error. A signal with no bias beats a biased signal plus a correction.
     """
     height = wrist_height(sequence)
-    fps = sequence.fps if sequence.fps > 0 else 60.0
+    fps = _effective_fps(sequence)
     half = max(2, int(round(IMPACT_REFINE_SECONDS * fps)))
 
     lo = max(p4 + 1, coarse - half)
@@ -214,7 +219,7 @@ def _find_address(sequence: PoseSequence, p4: int) -> int:
     if len(speed) < 2:
         return 0
 
-    fps_for_window = sequence.fps if sequence.fps > 0 else 60.0
+    fps_for_window = _effective_fps(sequence)
     # Derive the "moving" scale from a fixed window before the top, NOT the
     # whole clip. Taken over everything, a long static setup floods the
     # distribution with near-zero frames, drags the percentile down, and drops
@@ -226,8 +231,7 @@ def _find_address(sequence: PoseSequence, p4: int) -> int:
         return 0
     threshold = ADDRESS_MOTION_FRACTION * scale
 
-    fps = sequence.fps if sequence.fps > 0 else 60.0
-    min_still = max(3, int(round(ADDRESS_STILL_SECONDS * fps)))
+    min_still = max(3, int(round(ADDRESS_STILL_SECONDS * fps_for_window)))
 
     still = speed <= threshold
     run = 0
@@ -272,7 +276,7 @@ def detect_events(sequence: PoseSequence) -> SwingEvents:
     # P7 inside a physically plausible downswing window after the top. Without
     # the bound, a follow-through spike larger than impact wins the global
     # maximum — which happened on 5 of 20 real clips.
-    fps = sequence.fps if sequence.fps > 0 else 60.0
+    fps = _effective_fps(sequence)
     lo = p4 + max(1, int(round(DOWNSWING_MIN_SECONDS * fps)))
     hi = min(len(speed), p4 + int(round(DOWNSWING_MAX_SECONDS * fps)) + 1)
     if lo >= hi:
