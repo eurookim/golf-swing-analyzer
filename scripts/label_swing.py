@@ -7,8 +7,9 @@ detector picked the right one.
 
 Workflow:
     1. .venv/bin/python label_swing.py <clip>     # writes a strip + starter JSON
-    2. look at outputs/<clip>_labelstrip.jpg
-    3. edit data/labels/<clip>.json if the detector was off
+    2. look at outputs/<clip>_labelstrip.jpg (±12 frames; --span to widen)
+       and zoom_event.py <clip> --event P1 --at <frame> for a close-up
+    3. edit data/labels/<clip>.json if the detector was off, set "verified": true
     4. .venv/bin/python evaluate_events.py        # score detector vs labels
 """
 
@@ -29,8 +30,11 @@ PROCESSED = paths.PROCESSED_DIR
 RAW = paths.RAW_DIR
 OUT_DIR = paths.OUTPUTS_DIR
 
-SPAN = 3          # frames either side of the detection
+# Frames either side of the detection. Wide on purpose: a narrow window only
+# shows frames the detector already picked, so a label can't land far from it.
+SPAN = 12
 PANEL_H = 260
+TARGET_SHEET_WIDTH = 2400  # wrap each event's frames onto rows no wider than this
 LABEL_H = 30
 PAD = 4
 
@@ -81,8 +85,8 @@ def label_strip(
 
             picked = index == centre
             strip = np.full((LABEL_H, frame.shape[1], 3), SURFACE, dtype=np.uint8)
-            text = f"{name} f{clamped}" if picked else f"f{clamped}"
-            cv2.putText(strip, text, (6, 21), cv2.FONT_HERSHEY_SIMPLEX,
+            # Every panel names its event, since an event can wrap onto several rows.
+            cv2.putText(strip, f"{name} f{clamped}", (6, 21), cv2.FONT_HERSHEY_SIMPLEX,
                         0.5, ACCENT if picked else INK, 2 if picked else 1)
 
             panel = np.vstack([strip, frame])
@@ -92,20 +96,26 @@ def label_strip(
             panels.append(panel)
 
         gap = np.full((panels[0].shape[0], PAD, 3), SURFACE, dtype=np.uint8)
-        row = panels[0]
-        for panel in panels[1:]:
-            row = np.hstack([row, gap, panel])
-        rows.append(row)
+        per_row = max(1, TARGET_SHEET_WIDTH // (panels[0].shape[1] + PAD))
+        for start in range(0, len(panels), per_row):
+            chunk = panels[start:start + per_row]
+            row = chunk[0]
+            for panel in chunk[1:]:
+                row = np.hstack([row, gap, panel])
+            rows.append((name, row))
 
-    width = max(r.shape[1] for r in rows)
-    spacer = np.full((PAD * 2, width, 3), SURFACE, dtype=np.uint8)
+    width = max(r.shape[1] for _, r in rows)
     padded = []
-    for row in rows:
+    for i, (name, row) in enumerate(rows):
         if row.shape[1] < width:
             fill = np.full((row.shape[0], width - row.shape[1], 3), SURFACE, np.uint8)
             row = np.hstack([row, fill])
-        padded.extend([row, spacer])
-    sheet = np.vstack(padded[:-1])
+        padded.append(row)
+        if i + 1 < len(rows):
+            # A wider gap where one event ends and the next begins.
+            gap_h = PAD * 2 if rows[i + 1][0] == name else PAD * 8
+            padded.append(np.full((gap_h, width, 3), SURFACE, dtype=np.uint8))
+    sheet = np.vstack(padded)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out = OUT_DIR / f"{npz_path.stem}_labelstrip.jpg"
